@@ -24,7 +24,9 @@ export default function Dashboard() {
 
     const fetchMetrics = async () => {
       try {
-        const res = await fetch("http://127.0.0.1:8000/metrics");
+        // Use a Next.js server-side proxy so the browser doesn't need direct access
+        // to the backend host (useful in Codespaces / container previews).
+        const res = await fetch('/api/metrics');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         if (mounted) setMetrics(data as Metrics);
