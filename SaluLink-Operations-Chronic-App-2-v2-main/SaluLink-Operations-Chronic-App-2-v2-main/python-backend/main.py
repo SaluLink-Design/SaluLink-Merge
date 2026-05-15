@@ -215,6 +215,29 @@ def calculate_cosine_similarity(embedding1, embedding2):
     return torch.nn.functional.cosine_similarity(embedding1, embedding2)
 
 
+@app.get("/metrics")
+def get_metrics():
+    """Return lightweight dashboard metrics based on loaded chronic conditions."""
+    try:
+        total_conditions = len(chronic_condition_embeddings)
+        unique_icd_codes = len({c['icd_code'] for c in chronic_condition_embeddings if c.get('icd_code')})
+        top_conditions = []
+        for entry in chronic_condition_embeddings[:5]:
+            top_conditions.append({
+                'condition': entry.get('condition'),
+                'icd_code': entry.get('icd_code'),
+                'icd_description': entry.get('icd_description')
+            })
+
+        return {
+            'total_conditions': total_conditions,
+            'unique_icd_codes': unique_icd_codes,
+            'top_conditions': top_conditions
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def validate_note_completeness(clinical_text: str) -> Dict:
     """
     Validate the completeness of a clinical note
