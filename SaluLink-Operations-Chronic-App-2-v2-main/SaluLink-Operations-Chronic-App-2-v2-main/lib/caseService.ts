@@ -6,6 +6,7 @@ export interface SaveCaseParams {
   patientId: string;
   patientEmail?: string;
   patientPhone?: string;
+  medicalAidNumber?: string;
   clinicalNote: string;
   conditionName: string;
   icdCode: string;
@@ -15,6 +16,7 @@ export interface SaveCaseParams {
   medications: SelectedMedication[];
   medicationNote: string;
   plan: string;
+  isFinalSave?: boolean;
 }
 
 export async function saveCaseToDatabase(params: SaveCaseParams) {
@@ -22,6 +24,9 @@ export async function saveCaseToDatabase(params: SaveCaseParams) {
     const {
       patientName,
       patientId,
+      patientEmail,
+      patientPhone,
+      medicalAidNumber,
       clinicalNote,
       conditionName,
       icdCode,
@@ -31,15 +36,25 @@ export async function saveCaseToDatabase(params: SaveCaseParams) {
       medications,
       medicationNote,
       plan,
+      isFinalSave,
     } = params;
 
-    const status = ongoingTreatments.length > 0 ? 'ongoing' : 'diagnostic';
+    const status = isFinalSave
+      ? 'completed'
+      : ongoingTreatments.length > 0
+      ? 'ongoing'
+      : diagnosticTreatments.length > 0
+      ? 'diagnostic'
+      : 'draft';
 
     const { data: caseData, error: caseError } = await supabase
       .from('cases')
       .insert({
         patient_name: patientName,
         patient_id: patientId,
+        patient_email: patientEmail,
+        patient_phone: patientPhone,
+        medical_aid_number: medicalAidNumber,
         clinical_note: clinicalNote,
         condition_name: conditionName,
         icd_code: icdCode,

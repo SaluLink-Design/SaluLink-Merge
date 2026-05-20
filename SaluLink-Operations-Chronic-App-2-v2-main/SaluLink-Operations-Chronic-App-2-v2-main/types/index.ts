@@ -71,6 +71,9 @@ export interface PatientCase {
   id: string;
   patientName: string;
   patientId: string;
+  patientEmail?: string;
+  patientPhone?: string;
+  medicalAidNumber?: string;
   createdAt: Date;
   updatedAt: Date;
   clinicalNote: string;
@@ -82,7 +85,7 @@ export interface PatientCase {
   medications: SelectedMedication[];
   medicationNote: string;
   plan: MedicalPlan;
-  status: 'draft' | 'diagnostic' | 'ongoing' | 'completed';
+  status: 'new' | 'draft' | 'diagnostic' | 'ongoing' | 'completed';
   medicationReports?: MedicationReport[];
   referrals?: ReferralData[];
 }

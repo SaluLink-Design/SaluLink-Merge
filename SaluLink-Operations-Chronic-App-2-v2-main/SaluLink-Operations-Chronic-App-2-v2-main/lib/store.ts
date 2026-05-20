@@ -46,6 +46,7 @@ interface AppState {
   setSelectedPlan: (plan: MedicalPlan) => void;
   
   saveCase: (patientName: string, patientId: string) => void;
+  addCase: (patientCase: PatientCase) => void;
   loadCase: (caseId: string) => void;
   updateCase: (caseId: string, updates: Partial<PatientCase>) => void;
   deleteCase: (caseId: string) => void;
@@ -153,6 +154,12 @@ export const useStore = create<AppState>()(
           return acc;
         }, []);
 
+        const status = state.ongoingTreatments.length > 0
+          ? 'ongoing'
+          : state.diagnosticTreatments.length > 0
+          ? 'diagnostic'
+          : 'draft';
+
         const newCase: PatientCase = {
           id: Date.now().toString(),
           patientName,
@@ -168,7 +175,7 @@ export const useStore = create<AppState>()(
           medications: uniqueMedications,
           medicationNote: state.medicationNote,
           plan: state.selectedPlan,
-          status: state.ongoingTreatments.length > 0 ? 'ongoing' : 'diagnostic',
+          status,
         };
 
         set((state) => ({
@@ -176,6 +183,11 @@ export const useStore = create<AppState>()(
           currentCaseId: newCase.id,
         }));
       },
+
+      addCase: (patientCase) => set((state) => ({
+        cases: [...state.cases, patientCase],
+        currentCaseId: patientCase.id,
+      })),
       
       loadCase: (caseId) => {
         const state = get();

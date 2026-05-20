@@ -95,11 +95,11 @@ npm install
 Create a `.env.local` file in the repository root with your Supabase credentials:
 
 ```env
-NEXT_PUBLIC_SUPABASE_URL=https://ejfykjtfylxbbgyvjqfs.supabase.co
+NEXT_PUBLIC_SUPABASE_URL=https://homkufroaufrejnpnawf.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVqZnlranRmeWx4YmJneXZqcWZzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2NTY2NDIsImV4cCI6MjA5NDIzMjY0Mn0.v9EP0vr_RXeGplBVpvWC6IsiGPkUvPsnIdZ7mF2Ibfc
 
 # Optional server-side fallback
-SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_URL=https://homkufroaufrejnpnawf.supabase.co
 SUPABASE_ANON_KEY=your-anon-key
 ```
 

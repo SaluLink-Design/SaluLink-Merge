@@ -22,10 +22,15 @@ import MedicationReport from '@/components/MedicationReport';
 import Referral from '@/components/Referral';
 import FinalClaimSummary from '@/components/FinalClaimSummary';
 import PatientExportModal from '@/components/PatientExportModal';
-import { MatchedCondition } from '@/types';
+import Dashboard from '@/components/Dashboard';
+import PatientInfoForm, { PatientInfo } from '@/components/PatientInfoForm';
+import CaseOptionsView from '@/components/CaseOptionsView';
+import { MatchedCondition, PatientCase } from '@/types';
 import type { PatientExportData } from '@/lib/patientExport';
 
 type WorkflowMode = 'new' | 'ongoing' | 'medication' | 'referral';
+
+type AppView = 'dashboard' | 'patient-info' | 'case-options' | 'workflow';
 
 const deduplicateMedications = (medications: any[]) => {
   return medications.reduce((acc: any[], current) => {
@@ -50,10 +55,16 @@ export default function Home() {
   const [patientId, setPatientId] = useState('');
   const [patientEmail, setPatientEmail] = useState('');
   const [patientPhone, setPatientPhone] = useState('');
+  const [medicalAidNumber, setMedicalAidNumber] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showCaseActions, setShowCaseActions] = useState(false);
   const [showAllCases, setShowAllCases] = useState(false);
   const [showPatientExport, setShowPatientExport] = useState(false);
+  
+  // New dashboard workflow states
+  const [currentView, setCurrentView] = useState<AppView>('dashboard');
+  const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
+  const [currentCaseForView, setCurrentCaseForView] = useState<PatientCase | null>(null);
 
   useEffect(() => {
     const init = async () => {
@@ -62,6 +73,120 @@ export default function Home() {
     };
     init();
   }, []);
+
+  // Dashboard workflow handlers
+  const handleNewCaseClick = () => {
+    store.resetWorkflow();
+    setPatientName('');
+    setPatientId('');
+    setPatientEmail('');
+    setPatientPhone('');
+    setMedicalAidNumber('');
+    setMatchedConditions([]);
+    setCurrentView('patient-info');
+  };
+
+  const handlePatientInfoSubmit = (patientInfo: PatientInfo) => {
+    // Save patient info to state
+    setPatientName(patientInfo.patientName);
+    setPatientId(patientInfo.patientId);
+    setPatientEmail(patientInfo.patientEmail);
+    setPatientPhone(patientInfo.patientPhone);
+    setMedicalAidNumber(patientInfo.medicalAidNumber);
+    store.setSelectedPlan(patientInfo.plan);
+
+    // Create a new case with status "new"
+    const newCase: PatientCase = {
+      id: Date.now().toString(),
+      patientName: patientInfo.patientName,
+      patientId: patientInfo.patientId,
+      patientEmail: patientInfo.patientEmail,
+      patientPhone: patientInfo.patientPhone,
+      medicalAidNumber: patientInfo.medicalAidNumber,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      clinicalNote: '',
+      condition: '',
+      icdCode: '',
+      icdDescription: '',
+      diagnosticTreatments: [],
+      ongoingTreatments: [],
+      medications: [],
+      medicationNote: '',
+      plan: patientInfo.plan,
+      status: 'new',
+    };
+
+    // Add to store through a proper action so the dashboard updates correctly
+    store.addCase(newCase);
+    setSelectedCaseId(newCase.id);
+
+    // Return to dashboard to show the newly created case
+    setCurrentView('dashboard');
+  };
+
+  const handleViewCase = (caseId: string) => {
+    const caseData = store.cases.find(c => c.id === caseId);
+    if (caseData) {
+      setSelectedCaseId(caseId);
+      setCurrentCaseForView(caseData);
+      setCurrentView('case-options');
+    }
+  };
+
+  const handleStartClinicalNote = () => {
+    if (selectedCaseId && currentCaseForView) {
+      // Load the case into the workflow
+      setPatientName(currentCaseForView.patientName);
+      setPatientId(currentCaseForView.patientId);
+      setPatientEmail(currentCaseForView.patientEmail || '');
+      setPatientPhone(currentCaseForView.patientPhone || '');
+      setMedicalAidNumber(currentCaseForView.medicalAidNumber || '');
+      
+      store.loadCase(selectedCaseId);
+      store.setCurrentStep(0);
+      setCurrentWorkflow('new');
+      setCurrentView('workflow');
+    }
+  };
+
+  const handleContinueWorkflow = () => {
+    if (selectedCaseId && currentCaseForView) {
+      // Load the case and continue from where it left off
+      setPatientName(currentCaseForView.patientName);
+      setPatientId(currentCaseForView.patientId);
+      setPatientEmail(currentCaseForView.patientEmail || '');
+      setPatientPhone(currentCaseForView.patientPhone || '');
+      setMedicalAidNumber(currentCaseForView.medicalAidNumber || '');
+      
+      store.loadCase(selectedCaseId);
+      
+      // Determine which step to continue from
+      let startStep = 0;
+      if (currentCaseForView.clinicalNote) startStep = 1;
+      if (currentCaseForView.condition) startStep = 2;
+      if (currentCaseForView.diagnosticTreatments.length > 0) startStep = 3;
+      if (currentCaseForView.medications.length > 0) startStep = 4;
+      if (currentCaseForView.medicationNote) startStep = 5;
+      
+      store.setCurrentStep(startStep);
+      setCurrentWorkflow('new');
+      setCurrentView('workflow');
+    }
+  };
+
+  const handleBackToDashboard = () => {
+    setCurrentView('dashboard');
+    setSelectedCaseId(null);
+    setCurrentCaseForView(null);
+    store.resetWorkflow();
+    setPatientName('');
+    setPatientId('');
+    setPatientEmail('');
+    setPatientPhone('');
+    setMedicalAidNumber('');
+    setMatchedConditions([]);
+  };
 
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
@@ -231,6 +356,7 @@ export default function Home() {
         patientId,
         patientEmail,
         patientPhone,
+        medicalAidNumber,
         clinicalNote: store.clinicalNote,
         conditionName: store.selectedCondition || '',
         icdCode: store.selectedIcdCode || '',
@@ -240,16 +366,78 @@ export default function Home() {
         medications: store.medications,
         medicationNote: store.medicationNote,
         plan: store.selectedPlan,
+        isFinalSave: true,
       });
 
       if (!result.success) {
-        throw new Error(result.error || 'Failed to save case');
-      }
+        // Remote save failed (network or server). Fall back to local save so user doesn't lose work.
+        if (selectedCaseId) {
+          store.updateCase(selectedCaseId, {
+            patientName,
+            patientId,
+            patientEmail,
+            patientPhone,
+            medicalAidNumber,
+            clinicalNote: store.clinicalNote,
+            condition: store.selectedCondition || '',
+            icdCode: store.selectedIcdCode || '',
+            icdDescription: store.selectedIcdDescription || '',
+            diagnosticTreatments: store.diagnosticTreatments,
+            ongoingTreatments: store.ongoingTreatments,
+            medications: store.medications,
+            medicationNote: store.medicationNote,
+            plan: store.selectedPlan,
+            status: 'completed',
+            updatedAt: new Date(),
+          });
+        } else {
+          store.saveCase(patientName, patientId);
+          if (store.currentCaseId) {
+            setSelectedCaseId(store.currentCaseId);
+            store.updateCase(store.currentCaseId, {
+              status: 'completed',
+            });
+          }
+        }
 
-      store.saveCase(patientName, patientId);
-      setShowSaveModal(false);
-      setShowCaseActions(true);
-      alert('Case saved successfully to database!');
+        setShowSaveModal(false);
+        setShowCaseActions(true);
+        alert(`Saved locally. Remote save failed: ${result.error || 'Unknown error'}`);
+      } else {
+        // Remote save succeeded. Update or create local case accordingly.
+        if (selectedCaseId) {
+          store.updateCase(selectedCaseId, {
+            patientName,
+            patientId,
+            patientEmail,
+            patientPhone,
+            medicalAidNumber,
+            clinicalNote: store.clinicalNote,
+            condition: store.selectedCondition || '',
+            icdCode: store.selectedIcdCode || '',
+            icdDescription: store.selectedIcdDescription || '',
+            diagnosticTreatments: store.diagnosticTreatments,
+            ongoingTreatments: store.ongoingTreatments,
+            medications: store.medications,
+            medicationNote: store.medicationNote,
+            plan: store.selectedPlan,
+            status: 'completed',
+            updatedAt: new Date(),
+          });
+        } else {
+          store.saveCase(patientName, patientId);
+          if (store.currentCaseId) {
+            setSelectedCaseId(store.currentCaseId);
+            store.updateCase(store.currentCaseId, {
+              status: 'completed',
+            });
+          }
+        }
+
+        setShowSaveModal(false);
+        setShowCaseActions(true);
+        alert('Case saved successfully!');
+      }
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Failed to save case');
     } finally {
@@ -262,9 +450,39 @@ export default function Home() {
       alert('Please enter patient name and ID');
       return;
     }
-    store.saveCase(patientName, patientId);
+
+    if (selectedCaseId) {
+      store.updateCase(selectedCaseId, {
+        patientName,
+        patientId,
+        patientEmail,
+        patientPhone,
+        medicalAidNumber,
+        clinicalNote: store.clinicalNote,
+        condition: store.selectedCondition || '',
+        icdCode: store.selectedIcdCode || '',
+        icdDescription: store.selectedIcdDescription || '',
+        diagnosticTreatments: store.diagnosticTreatments,
+        ongoingTreatments: store.ongoingTreatments,
+        medications: store.medications,
+        medicationNote: store.medicationNote,
+        plan: store.selectedPlan,
+        status: store.ongoingTreatments.length > 0
+          ? 'ongoing'
+          : store.diagnosticTreatments.length > 0
+          ? 'diagnostic'
+          : 'draft',
+        updatedAt: new Date(),
+      });
+    } else {
+      store.saveCase(patientName, patientId);
+      if (store.currentCaseId) {
+        setSelectedCaseId(store.currentCaseId);
+      }
+    }
+
     setShowSaveModal(false);
-    setShowCaseActions(false);
+    setShowCaseActions(true);
 
     if (includeAttachments) {
       await handleExportWithAttachments();
@@ -586,55 +804,94 @@ export default function Home() {
     );
   }
 
-  return (
-    <div className="min-h-screen bg-primary-50">
-      {showAllCases && (
-        <AllCasesView
+  // Dashboard view
+  if (currentView === 'dashboard') {
+    return (
+      <div>
+        <Dashboard
+          cases={store.cases}
+          onNewCase={handleNewCaseClick}
+          onViewCase={handleViewCase}
+        />
+      </div>
+    );
+  }
+
+  // Patient info form view
+  if (currentView === 'patient-info') {
+    return (
+      <PatientInfoForm
+        onSave={handlePatientInfoSubmit}
+        onCancel={handleBackToDashboard}
+      />
+    );
+  }
+
+  // Case options view
+  if (currentView === 'case-options' && currentCaseForView) {
+    return (
+      <CaseOptionsView
+        caseData={currentCaseForView}
+        onStartClinicalNote={handleStartClinicalNote}
+        onContinueWorkflow={handleContinueWorkflow}
+        onClose={handleBackToDashboard}
+      />
+    );
+  }
+
+  // Workflow view (original workflow)
+  if (currentView === 'workflow') {
+    return (
+      <div className="min-h-screen bg-primary-50">
+        {showAllCases && (
+          <AllCasesView
+            cases={store.cases}
+            onLoadCase={handleLoadCase}
+            onDeleteCase={store.deleteCase}
+            onClose={() => setShowAllCases(false)}
+          />
+        )}
+
+        {/* Header */}
+        <header className="bg-white border-b border-primary-200 sticky top-0 z-30">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-20">
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={handleBackToDashboard}
+                  className="p-2 hover:bg-gray-100 rounded-lg"
+                >
+                  <ArrowLeft className="w-6 h-6" />
+                </button>
+                <div>
+                  <p className="text-xl font-bold text-gray-800 tracking-tight">Clinical Workflow</p>
+                  <p className="text-sm text-gray-600">{patientName} ({patientId})</p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={store.toggleSidebar}
+                  className="p-2 hover:bg-gray-100 rounded-lg"
+                >
+                  <Menu className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <Sidebar
+          isOpen={store.sidebarOpen}
+          onClose={store.toggleSidebar}
           cases={store.cases}
           onLoadCase={handleLoadCase}
           onDeleteCase={store.deleteCase}
-          onClose={() => setShowAllCases(false)}
+          onViewAll={() => setShowAllCases(true)}
         />
-      )}
 
-      {/* Header */}
-      <header className="bg-white border-b border-primary-200 sticky top-0 z-30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-20">
-            <div className="flex items-center gap-4">
-              <img
-                src="/3.svg"
-                alt="SaluLink Logo"
-                className="h-28 w-auto"
-              />
-              <div>
-                <p className="text-xl font-bold text-gray-800 tracking-tight">Chronic Treatment App</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-3">
-              <button
-                onClick={store.toggleSidebar}
-                className="p-2 hover:bg-gray-100 rounded-lg"
-              >
-                <Menu className="w-6 h-6" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <Sidebar
-        isOpen={store.sidebarOpen}
-        onClose={store.toggleSidebar}
-        cases={store.cases}
-        onLoadCase={handleLoadCase}
-        onDeleteCase={store.deleteCase}
-        onViewAll={() => setShowAllCases(true)}
-      />
-
-      {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Main Content */}
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {currentWorkflow === 'new' && (
           <>
             {/* Progress Steps */}
@@ -1005,6 +1262,10 @@ export default function Home() {
         />
       )}
     </div>
-  );
+    );
+  }
+
+  // Fallback - should not reach here
+  return <Dashboard cases={store.cases} onNewCase={handleNewCaseClick} onViewCase={handleViewCase} />;
 }
 
