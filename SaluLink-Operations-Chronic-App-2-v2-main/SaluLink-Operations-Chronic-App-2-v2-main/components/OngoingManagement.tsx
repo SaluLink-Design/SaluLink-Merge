@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Upload, Repeat, X, FileText, Download, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Upload, Repeat, X, FileText, Download, Check, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
 import { TreatmentBasketItem, TreatmentItem } from '@/types';
 import { DataService } from '@/lib/dataService';
 import FileUploadWithRename from './FileUploadWithRename';
@@ -45,25 +45,24 @@ const OngoingManagement = ({
     treatments.find(t => t.description === item.ongoingManagementBasket.description);
 
   const handleClickItem = (item: TreatmentBasketItem) => {
+    const desc = item.ongoingManagementBasket.description;
     const isSelected = isItemSelected(item);
     if (isSelected) {
-      setExpandedItem(prev =>
-        prev === item.ongoingManagementBasket.description
-          ? null
-          : item.ongoingManagementBasket.description
-      );
+      // Toggle: collapse if already open, otherwise open (closing any other)
+      setExpandedItem(prev => (prev === desc ? null : desc));
     } else {
       const coverageValue = item.ongoingManagementBasket.covered?.trim();
       const maxCovered =
         coverageValue && !isNaN(parseInt(coverageValue)) ? parseInt(coverageValue) : 1;
       onAddTreatment({
-        description: item.ongoingManagementBasket.description,
+        description: desc,
         code: item.ongoingManagementBasket.code,
         maxCovered,
         timesCompleted: 1,
         documentation: { notes: '', images: [] },
       });
-      setExpandedItem(item.ongoingManagementBasket.description);
+      // Open the newly added item and collapse any other open item
+      setExpandedItem(desc);
     }
   };
 
@@ -84,15 +83,15 @@ const OngoingManagement = ({
     <div className="space-y-6">
       <div className="card">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-            <Repeat className="w-6 h-6 text-blue-600" />
+          <div className="brand-icon">
+            <Repeat className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Ongoing Management Basket</h2>
-            <p className="text-sm text-gray-500">Select and document ongoing monitoring and management protocols</p>
+            <h2 className="text-2xl font-bold text-slate-900">Ongoing Management Basket</h2>
+            <p className="text-sm text-slate-500">Select and document ongoing monitoring and management protocols</p>
           </div>
           {treatments.length > 0 && (
-            <span className="ml-auto inline-flex items-center gap-1 text-sm font-medium text-blue-700 bg-blue-100 px-2.5 py-0.5 rounded-full">
+            <span className="ml-auto brand-badge-selected inline-flex items-center gap-1">
               <Check className="w-3.5 h-3.5" />
               {treatments.length} selected
             </span>
@@ -100,7 +99,7 @@ const OngoingManagement = ({
         </div>
 
         {basketItems.length === 0 ? (
-          <p className="text-sm text-gray-500 text-center py-8">
+          <p className="text-sm text-slate-500 text-center py-8">
             No ongoing management items available for this condition.
           </p>
         ) : (
@@ -115,10 +114,8 @@ const OngoingManagement = ({
               return (
                 <div
                   key={idx}
-                  className={`rounded-xl border-2 transition-all duration-200 ${
-                    isSelected
-                      ? 'border-blue-400 bg-blue-50 shadow-sm'
-                      : 'border-gray-200 bg-white hover:border-blue-300 hover:shadow-sm'
+                  className={`transition-all duration-200 ${
+                    isSelected ? 'brand-card-selected' : 'brand-card'
                   }`}
                 >
                   {/* Card Header */}
@@ -130,25 +127,25 @@ const OngoingManagement = ({
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <h4 className="font-semibold text-gray-900 leading-snug">
+                          <h4 className="font-semibold text-slate-900 leading-snug">
                             {item.ongoingManagementBasket.description}
                           </h4>
                           {isSelected && (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded font-medium">
+                            <span className="brand-badge-selected inline-flex items-center gap-1">
                               <Check className="w-3 h-3" /> Selected
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-4 text-sm text-gray-500">
+                        <div className="flex items-center gap-4 text-sm text-slate-500">
                           <span>
                             Code:{' '}
-                            <span className="font-mono text-gray-700">
+                            <span className="font-mono text-slate-400">
                               {item.ongoingManagementBasket.code}
                             </span>
                           </span>
                           <span>
                             Max:{' '}
-                            <span className="font-semibold text-gray-700">
+                            <span className="font-semibold text-slate-700">
                               {item.ongoingManagementBasket.covered}
                             </span>{' '}
                             covered
@@ -175,7 +172,7 @@ const OngoingManagement = ({
                             >
                               <X className="w-4 h-4" />
                             </button>
-                            <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
+                            <div className="brand-check">
                               <Check className="w-3.5 h-3.5 text-white" />
                             </div>
                             {isExpanded ? (
@@ -195,10 +192,11 @@ const OngoingManagement = ({
                   {isSelected && !isExpanded && treatment && (
                     <button
                       type="button"
-                      className="w-full px-4 pb-3 text-left border-t border-blue-200"
+                      className="w-full px-4 pb-3 text-left border-t border-violet-200/60"
                       onClick={() => setExpandedItem(item.ongoingManagementBasket.description)}
+                      title="Expand findings"
                     >
-                      <p className="pt-2.5 text-sm text-gray-500 italic">
+                      <p className="pt-2.5 text-sm text-slate-500 italic">
                         {treatment.documentation.notes
                           ? treatment.documentation.notes.length > 70
                             ? treatment.documentation.notes.substring(0, 70) + '…'
@@ -211,13 +209,13 @@ const OngoingManagement = ({
                   {/* Expanded Documentation Form */}
                   {isSelected && isExpanded && treatment && (
                     <div
-                      className="px-4 pb-5 border-t border-blue-200"
+                      className="px-4 pb-5 border-t border-violet-200/60"
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="pt-4 space-y-5">
                         {/* Times Completed */}
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
                             Times Completed (Per Year)
                           </label>
                           <div className="flex items-center gap-3">
@@ -229,11 +227,11 @@ const OngoingManagement = ({
                                 })
                               }
                               disabled={treatment.timesCompleted <= 1}
-                              className="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-lg font-bold text-gray-700 disabled:opacity-40"
+                              className="w-8 h-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-700 disabled:opacity-40"
                             >
                               −
                             </button>
-                            <span className="w-8 text-center text-lg font-semibold text-gray-900">
+                            <span className="w-8 text-center text-lg font-semibold text-slate-900">
                               {treatment.timesCompleted}
                             </span>
                             <button
@@ -247,20 +245,18 @@ const OngoingManagement = ({
                                 })
                               }
                               disabled={treatment.timesCompleted >= treatment.maxCovered}
-                              className="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 rounded-lg font-bold text-gray-700 disabled:opacity-40"
+                              className="w-8 h-8 flex items-center justify-center bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-700 disabled:opacity-40"
                             >
                               +
                             </button>
-                            <span className="text-sm text-gray-500">
+                            <span className="text-sm text-slate-500">
                               of{' '}
-                              <span className="font-semibold text-gray-700">
+                              <span className="font-semibold text-slate-700">
                                 {treatment.maxCovered}
                               </span>{' '}
                               covered per year
                               {treatment.timesCompleted === treatment.maxCovered && (
-                                <span className="ml-2 text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">
-                                  Max reached
-                                </span>
+                                <span className="ml-2 brand-badge">Max reached</span>
                               )}
                             </span>
                           </div>
@@ -268,7 +264,7 @@ const OngoingManagement = ({
 
                         {/* Findings */}
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
                             Findings &amp; Results
                           </label>
                           <textarea
@@ -283,13 +279,13 @@ const OngoingManagement = ({
                                 },
                               })
                             }
-                            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent resize-none bg-white"
+                            className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none bg-white text-slate-900 placeholder-slate-400"
                           />
                         </div>
 
                         {/* File Upload */}
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
                             Upload Documents
                           </label>
                           <FileUploadWithRename
@@ -311,18 +307,18 @@ const OngoingManagement = ({
         )}
 
         {/* Save Buttons */}
-        <div className="mt-6 flex gap-3 justify-end">
-          <button onClick={onSaveOnly} className="btn-secondary flex items-center gap-2">
-            <Repeat className="w-4 h-4" />
-            Save Without Export
-          </button>
+        <div className="mt-6 flex flex-wrap gap-3 justify-end">
           <button onClick={onSavePdfOnly} className="btn-secondary flex items-center gap-2">
             <FileText className="w-4 h-4" />
             Save &amp; Export PDF Only
           </button>
-          <button onClick={onSaveWithAttachments} className="btn-primary flex items-center gap-2">
+          <button onClick={onSaveWithAttachments} className="btn-secondary flex items-center gap-2">
             <Upload className="w-4 h-4" />
             Save &amp; Export with Attachments (ZIP)
+          </button>
+          <button onClick={onSaveOnly} className="btn-primary flex items-center gap-2">
+            <CheckCircle className="w-4 h-4" />
+            Confirm and Save Claim
           </button>
         </div>
       </div>

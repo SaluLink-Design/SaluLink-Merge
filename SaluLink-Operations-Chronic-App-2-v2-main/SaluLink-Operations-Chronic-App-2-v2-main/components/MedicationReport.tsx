@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { SelectedMedication } from '@/types';
-import { FileText, Plus, Save, Upload } from 'lucide-react';
+import { FileText, Plus, CheckCircle, Upload } from 'lucide-react';
 import MedicationSelection from './MedicationSelection';
 import FileUploadWithRename from './FileUploadWithRename';
 
@@ -79,31 +79,31 @@ const MedicationReport = ({
     <div className="space-y-6">
       <div className="card">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-            <FileText className="w-6 h-6 text-purple-600" />
+          <div className="brand-icon">
+            <FileText className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Medication Report</h2>
-            <p className="text-sm text-gray-500">Review and update medication status</p>
+            <h2 className="text-2xl font-bold text-slate-900">Medication Report</h2>
+            <p className="text-sm text-slate-500">Review and update medication status</p>
           </div>
         </div>
         
         {/* Current Medications */}
         <div className="mb-6">
-          <h3 className="font-semibold text-lg mb-3">Current Medications</h3>
+          <h3 className="font-semibold text-lg text-slate-900 mb-3">Current Medications</h3>
           <div className="space-y-2">
             {currentMedications.map((med, index) => (
-              <div key={index} className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
-                <p className="font-medium text-gray-900">{med.medicineNameAndStrength}</p>
-                <p className="text-sm text-gray-600">{med.activeIngredient}</p>
-                <p className="text-sm text-primary-600 font-medium">CDA: {med.cdaAmount}</p>
+              <div key={index} className="p-3 brand-card-selected">
+                <p className="font-medium text-slate-900">{med.medicineNameAndStrength}</p>
+                <p className="text-sm text-slate-500">{med.activeIngredient}</p>
+                <p className="text-sm text-violet-600 font-semibold">CDA: {med.cdaAmount}</p>
               </div>
             ))}
           </div>
           
-          <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <p className="text-sm font-medium text-blue-900 mb-1">Registration Note:</p>
-            <p className="text-sm text-blue-700">{medicationNote || 'No note provided'}</p>
+          <div className="mt-3 brand-info-box">
+            <p className="text-sm font-medium text-violet-700 mb-1">Registration Note:</p>
+            <p className="text-sm text-violet-600">{medicationNote || 'No note provided'}</p>
           </div>
         </div>
         
@@ -121,7 +121,7 @@ const MedicationReport = ({
 
         {/* Documentation Section */}
         <div className="mb-6">
-          <h3 className="font-semibold text-lg mb-3">Supporting Documentation</h3>
+          <h3 className="font-semibold text-lg text-slate-900 mb-3">Supporting Documentation</h3>
           <div className="space-y-4">
             <div>
               <label className="label">Documentation Notes</label>
@@ -146,7 +146,7 @@ const MedicationReport = ({
         {!addingNew ? (
           <button
             onClick={() => setAddingNew(true)}
-            className="btn-secondary w-full flex items-center justify-center gap-2"
+            className="btn-secondary w-full flex items-center justify-center gap-2 mb-2"
           >
             <Plus className="w-5 h-5" />
             Prescribe New Medication
@@ -175,6 +175,7 @@ const MedicationReport = ({
             </div>
             
             <button
+              type="button"
               onClick={() => setAddingNew(false)}
               className="btn-secondary text-sm"
             >
@@ -185,17 +186,17 @@ const MedicationReport = ({
         
         {/* Save Buttons */}
         <div className="mt-6 flex flex-wrap gap-3 justify-end">
-          <button type="button" onClick={handleSaveOnly} className="btn-secondary flex items-center gap-2">
-            <Save className="w-4 h-4" />
-            Save Without Export
-          </button>
           <button type="button" onClick={handleSavePdfOnly} className="btn-secondary flex items-center gap-2">
             <FileText className="w-4 h-4" />
             Save &amp; Export PDF Only
           </button>
-          <button type="button" onClick={handleSaveWithAttachments} className="btn-primary flex items-center gap-2">
+          <button type="button" onClick={handleSaveWithAttachments} className="btn-secondary flex items-center gap-2">
             <Upload className="w-4 h-4" />
             Save &amp; Export with Attachments (ZIP)
+          </button>
+          <button type="button" onClick={handleSaveOnly} className="btn-primary flex items-center gap-2">
+            <CheckCircle className="w-4 h-4" />
+            Confirm and Save Claim
           </button>
         </div>
       </div>

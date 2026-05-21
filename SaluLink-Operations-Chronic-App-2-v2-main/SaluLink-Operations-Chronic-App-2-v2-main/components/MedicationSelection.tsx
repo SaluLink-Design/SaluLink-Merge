@@ -182,10 +182,8 @@ const MedicationSelection = ({
             <button
               key={plan}
               onClick={() => onSetPlan(plan)}
-              className={`px-4 py-2 rounded-lg border-2 font-medium transition-all ${
-                selectedPlan === plan
-                  ? 'border-primary-500 bg-primary-50 text-primary-700'
-                  : 'border-gray-200 bg-white text-gray-700 hover:border-primary-300'
+              className={`px-4 py-2 rounded-xl font-semibold transition-all ${
+                selectedPlan === plan ? 'brand-pill-active' : 'brand-pill-inactive'
               }`}
             >
               {plan}
@@ -196,7 +194,7 @@ const MedicationSelection = ({
 
       {/* Insulin Limit Warning for Diabetes */}
       {isDiabetesCondition && (
-        <div className="card bg-blue-50 border-2 border-blue-200">
+        <div className="card brand-info-box border-2">
           <div className="flex items-start gap-3">
             <AlertTriangle className="w-6 h-6 text-blue-600 flex-shrink-0 mt-1" />
             <div className="flex-1">
@@ -232,12 +230,14 @@ const MedicationSelection = ({
       {/* Medicine Selection */}
       <div className="card">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-            <Pill className="w-6 h-6 text-purple-600" />
+          <div className="brand-icon">
+            <Pill className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Medication Selection</h2>
-            <p className="text-sm text-gray-500">Select medications for {condition}</p>
+            <h2 className="text-2xl font-bold text-slate-900">Medication Selection</h2>
+            <p className="text-sm text-slate-500">
+              Select medications for <span className="font-medium text-violet-600">{condition}</span>
+            </p>
           </div>
         </div>
 
@@ -275,7 +275,7 @@ const MedicationSelection = ({
               {/* All Classes card */}
               <button
                 onClick={() => handleClassClick(null)}
-                className="w-full text-left p-4 rounded-lg border-2 border-primary-400 bg-primary-50 hover:bg-primary-100 transition-all"
+                className="w-full text-left p-4 brand-card-selected hover:opacity-95 transition-all"
               >
                 <div className="flex items-center justify-between">
                   <div>
@@ -295,7 +295,7 @@ const MedicationSelection = ({
                   <button
                     key={cls}
                     onClick={() => handleClassClick(cls)}
-                    className="w-full text-left p-4 rounded-lg border border-gray-200 bg-white hover:border-primary-300 hover:bg-gray-50 transition-all"
+                    className="w-full text-left p-4 brand-card"
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex-1 pr-4">
@@ -311,11 +311,8 @@ const MedicationSelection = ({
                       </div>
                     </div>
                     {notCovered > 0 && (
-                      <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mt-2">
-                        <div
-                          className="h-full bg-green-500 rounded-full"
-                          style={{ width: `${pct}%` }}
-                        />
+                      <div className="brand-progress-track mt-2">
+                        <div className="brand-progress-fill" style={{ width: `${pct}%` }} />
                       </div>
                     )}
                   </button>
@@ -331,7 +328,7 @@ const MedicationSelection = ({
             <div className="flex items-center gap-3 mb-4">
               <button
                 onClick={handleBackToClasses}
-                className="flex items-center gap-1 text-sm text-primary-600 hover:text-primary-800 font-medium"
+                className="flex items-center gap-1 text-sm font-semibold brand-gradient-text hover:opacity-80"
               >
                 <X className="w-4 h-4" />
                 Back to classes
@@ -342,8 +339,8 @@ const MedicationSelection = ({
             </div>
 
             {(searchTerm || selectedClass) && (
-              <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <p className="text-sm text-blue-900">
+              <div className="mb-3 brand-info-box">
+                <p className="text-sm text-violet-800">
                   <strong>{filteredMedications.length}</strong> medication{filteredMedications.length !== 1 ? 's' : ''} found
                   {searchTerm && <span> matching &ldquo;<strong>{searchTerm}</strong>&rdquo;</span>}
                   {selectedClass && !searchTerm && <span> in <strong>{selectedClass}</strong></span>}
@@ -382,14 +379,16 @@ const MedicationSelection = ({
                     key={index}
                     onClick={() => handleSelectMedication(medicine)}
                     disabled={isDisabled}
-                    className={`w-full text-left p-4 rounded-lg border transition-all ${
-                      isSelected || isExcluded
-                        ? 'border-green-400 bg-green-50 cursor-not-allowed'
+                    className={`w-full text-left p-4 transition-all ${
+                      isSelected
+                        ? 'brand-card-selected cursor-not-allowed'
+                        : isExcluded
+                        ? 'border-2 border-violet-200 bg-violet-50/40 cursor-not-allowed'
                         : isRestricted
-                        ? 'border-orange-200 bg-orange-50 cursor-not-allowed opacity-75'
+                        ? 'border-2 border-orange-200 bg-orange-50 cursor-not-allowed opacity-75'
                         : wouldExceedLimit
-                        ? 'border-red-200 bg-red-50 cursor-not-allowed opacity-60'
-                        : 'border-gray-200 bg-white hover:border-primary-400 hover:shadow-sm'
+                        ? 'border-2 border-red-200 bg-red-50 cursor-not-allowed opacity-60'
+                        : 'brand-card'
                     }`}
                   >
                     <div className="flex items-start justify-between">
@@ -399,10 +398,10 @@ const MedicationSelection = ({
                             {medicine.medicineNameAndStrength}
                           </h4>
                           {isSelected && (
-                            <span className="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded font-medium">Selected</span>
+                            <span className="brand-badge-selected">Selected</span>
                           )}
                           {isExcluded && (
-                            <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded font-medium">Already Prescribed</span>
+                            <span className="brand-badge">Already Prescribed</span>
                           )}
                           {isRestricted && medicine.planRestriction && (
                             <span className="px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded font-medium flex items-center gap-1">
@@ -421,7 +420,7 @@ const MedicationSelection = ({
                           <p className="text-gray-500">
                             <span className="font-medium text-gray-700">Active Ingredient:</span> {medicine.activeIngredient}
                           </p>
-                          <p className="text-primary-600 font-medium mt-1">
+                          <p className="text-violet-600 font-semibold mt-1">
                             CDA Amount: {cdaAmount}
                           </p>
                           {isRestricted && medicine.planRestriction && (
@@ -435,7 +434,7 @@ const MedicationSelection = ({
                         </div>
                       </div>
                       {isSelected && (
-                        <div className="ml-4 w-6 h-6 bg-green-600 rounded-full flex items-center justify-center flex-shrink-0">
+                        <div className="ml-4 brand-check">
                           <Check className="w-4 h-4 text-white" />
                         </div>
                       )}
@@ -459,12 +458,12 @@ const MedicationSelection = ({
           <h3 className="font-semibold text-lg mb-4">Selected Medications ({medications.length})</h3>
           <div className="space-y-3">
             {medications.map((med, index) => (
-              <div key={index} className="p-4 bg-green-50 border border-green-200 rounded-lg">
+              <div key={index} className="p-4 brand-card-selected">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <p className="font-medium text-gray-900">{med.medicineNameAndStrength}</p>
                     <p className="text-sm text-gray-600">{med.activeIngredient}</p>
-                    <p className="text-sm text-primary-600 font-medium">CDA: {med.cdaAmount}</p>
+                    <p className="text-sm text-violet-600 font-semibold">CDA: {med.cdaAmount}</p>
                   </div>
                   <button
                     onClick={() => onRemoveMedication(index)}

@@ -21,24 +21,24 @@ const ChronicRegistrationNote = ({
       {/* Header */}
       <div className="card">
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-            <FileText className="w-6 h-6 text-blue-600" />
+          <div className="brand-icon">
+            <FileText className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-gray-900">Chronic Medication Registration Note</h2>
-            <p className="text-sm text-gray-500">
+            <h2 className="text-2xl font-bold text-slate-900">Chronic Medication Registration Note</h2>
+            <p className="text-sm text-slate-500">
               Provide the clinical rationale for the prescribed medications
             </p>
           </div>
         </div>
 
         {/* Info Box */}
-        <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 mb-6">
+        <div className="brand-info-box border-2 mb-6">
           <div className="flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-violet-600 flex-shrink-0 mt-0.5" />
             <div className="flex-1">
-              <h3 className="font-semibold text-blue-900 mb-1">Registration Note Guidelines</h3>
-              <ul className="text-sm text-blue-800 space-y-1">
+              <h3 className="font-semibold text-violet-900 mb-1">Registration Note Guidelines</h3>
+              <ul className="text-sm text-violet-800 space-y-1">
                 <li>• Explain the clinical rationale for each medication</li>
                 <li>• Include relevant patient history and symptoms</li>
                 <li>• Reference clinical guidelines where applicable</li>

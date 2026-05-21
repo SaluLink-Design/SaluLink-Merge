@@ -25,6 +25,7 @@ import CaseOptionsView from '@/components/CaseOptionsView';
 import PatientProfile from '@/components/PatientProfile';
 import { MatchedCondition, PatientCase, SelectedMedication, ClaimType } from '@/types';
 import type { PatientExportData } from '@/lib/patientExport';
+import AppSidebar from '@/components/AppSidebar';
 
 type UserRole = 'assistant' | 'doctor';
 
@@ -205,7 +206,12 @@ export default function Home() {
     setPatientPhone(patientInfo.patientPhone);
     setMedicalAidNumber(patientInfo.medicalAidNumber);
     store.setSelectedPlan(patientInfo.plan);
-    setCurrentClaimType(patientInfo.claimType);
+
+    const isAssistantIntake = userRole === 'assistant';
+
+    if (patientInfo.claimType) {
+      setCurrentClaimType(patientInfo.claimType);
+    }
 
     const newCase: PatientCase = {
       id: Date.now().toString(),
@@ -214,7 +220,7 @@ export default function Home() {
       patientEmail: patientInfo.patientEmail,
       patientPhone: patientInfo.patientPhone,
       medicalAidNumber: patientInfo.medicalAidNumber,
-      claimType: patientInfo.claimType,
+      ...(patientInfo.claimType ? { claimType: patientInfo.claimType } : {}),
       createdAt: new Date(),
       updatedAt: new Date(),
       clinicalNote: '',
@@ -233,8 +239,26 @@ export default function Home() {
     setSelectedCaseId(newCase.id);
     setPatientInfoPrefill(undefined);
 
-    // Route directly into the correct workflow
+    if (isAssistantIntake) {
+      setCurrentCaseForView(newCase);
+      setCurrentView('case-options');
+      return;
+    }
+
+    if (!patientInfo.claimType) {
+      alert('Please select a claim type to continue.');
+      return;
+    }
+
     setCurrentView('workflow');
+  };
+
+  const handleDoctorSelectClaimType = (caseId: string, claimType: ClaimType) => {
+    store.updateCase(caseId, { claimType, updatedAt: new Date() });
+    setCurrentClaimType(claimType);
+    if (currentCaseForView?.id === caseId) {
+      setCurrentCaseForView({ ...currentCaseForView, claimType, updatedAt: new Date() });
+    }
   };
 
   const handleViewCase = (caseId: string) => {
@@ -253,6 +277,10 @@ export default function Home() {
 
   const handleStartClinicalNote = () => {
     if (userRole === 'assistant') return;
+    if (selectedCaseId && currentCaseForView && !currentCaseForView.claimType) {
+      alert('Select a claim type before starting the workflow.');
+      return;
+    }
     if (selectedCaseId && currentCaseForView) {
       setPatientName(currentCaseForView.patientName);
       setPatientId(currentCaseForView.patientId);
@@ -269,6 +297,10 @@ export default function Home() {
 
   const handleContinueWorkflow = () => {
     if (userRole === 'assistant') return;
+    if (selectedCaseId && currentCaseForView && !currentCaseForView.claimType) {
+      alert('Select a claim type before continuing the workflow.');
+      return;
+    }
     if (selectedCaseId && currentCaseForView) {
       setPatientName(currentCaseForView.patientName);
       setPatientId(currentCaseForView.patientId);
@@ -755,8 +787,6 @@ export default function Home() {
     }
     store.resetWorkflow();
     setCurrentView('dashboard');
-    alert('Ongoing management saved.');
-    setCurrentWorkflow('new');
   };
 
   const handleExportSingleTreatment = async (treatmentIndex: number) => {
@@ -1006,170 +1036,159 @@ export default function Home() {
     );
   }
 
+  const renderView = (): React.ReactNode => {
+
   if (currentView === 'landing') {
     return (
-      <div className="min-h-screen bg-slate-950 text-white">
-        <div className="max-w-7xl mx-auto px-6 py-10">
-          <div className="grid lg:grid-cols-[280px_1fr] gap-8">
-            <aside className="rounded-[32px] bg-slate-900 border border-white/10 p-8 shadow-2xl">
-              <div className="flex items-center gap-3 mb-10">
-                <div className="w-12 h-12 rounded-3xl bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center text-white text-xl font-bold">S</div>
-                <div>
-                  <p className="text-sm text-slate-400 uppercase tracking-[0.3em]">SaluLink</p>
-                  <h1 className="text-2xl font-semibold">Chronic Treatment App</h1>
-                </div>
-              </div>
+      <div className="min-h-screen bg-white text-slate-900">
+        <div className="max-w-4xl mx-auto px-6 py-10">
 
-              <div className="space-y-5">
-                <div className="rounded-3xl bg-slate-800 p-5 border border-white/10">
-                  <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Practice</p>
-                  <p className={`mt-3 ${practiceName ? 'text-lg font-semibold text-white' : 'text-sm text-slate-500'}`}>
-                    {practiceName || '—'}
-                  </p>
-                  <p className="mt-2 text-sm text-slate-400">
-                    {isPracticeReady
-                      ? 'Switch roles in the sidebar, then open the matching workspace on the right.'
-                      : 'Set up your clinic, invite your assistant, and start patient intake.'}
-                  </p>
-                </div>
+          {/* Practice context strip */}
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-8 rounded-2xl bg-white border border-slate-200 px-5 py-4">
+            <div>
+              <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Practice</p>
+              <p className={`mt-0.5 text-sm font-semibold ${practiceName ? 'text-slate-900' : 'text-slate-400'}`}>
+                {practiceName || 'Not set up yet'}
+              </p>
+            </div>
 
-                {isPracticeReady && (
-                  <div className="rounded-3xl bg-slate-800 p-5 border border-white/10">
-                    <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Roles</p>
-                    <div className="mt-4 space-y-3">
-                      <button
-                        type="button"
-                        onClick={() => setLandingRole('assistant')}
-                        className={`w-full rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${
-                          landingRole === 'assistant'
-                            ? 'border-blue-400 bg-slate-950 text-white'
-                            : 'border-slate-700 bg-slate-950 text-white hover:border-blue-400'
-                        }`}
-                      >
-                        Assistant
-                        <span className="block text-xs text-slate-500 mt-1 font-normal">
-                          {assistantName || 'Create patient intake and download claim documents.'}
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setLandingRole('doctor')}
-                        className={`w-full rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${
-                          landingRole === 'doctor'
-                            ? 'border-violet-400 bg-slate-950 text-white'
-                            : 'border-slate-700 bg-slate-950 text-white hover:border-violet-400'
-                        }`}
-                      >
-                        Doctor
-                        <span className="block text-xs text-slate-500 mt-1 font-normal">
-                          {doctorName || 'Review cases and complete the claim workflow.'}
-                        </span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
+            {isPracticeReady && (
+              <div className="flex gap-2">
                 <button
-                  onClick={handleStartOnboarding}
-                  className="w-full rounded-2xl bg-primary-400 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-primary-500 transition"
+                  type="button"
+                  onClick={() => setLandingRole('assistant')}
+                  className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
+                    landingRole === 'assistant'
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-slate-200 bg-white text-slate-500 hover:border-blue-400 hover:text-blue-600'
+                  }`}
                 >
-                  Practice onboarding
+                  Assistant{assistantName ? ` · ${assistantName}` : ''}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLandingRole('doctor')}
+                  className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
+                    landingRole === 'doctor'
+                      ? 'border-violet-500 bg-violet-50 text-violet-700'
+                      : 'border-slate-200 bg-white text-slate-500 hover:border-violet-400 hover:text-violet-600'
+                  }`}
+                >
+                  Doctor{doctorName ? ` · ${doctorName}` : ''}
                 </button>
               </div>
-            </aside>
+            )}
 
-            <main className="rounded-[32px] bg-white p-10 shadow-2xl">
-              <div className="max-w-3xl">
-                {isPracticeReady ? (
-                  <>
-                    <p className="text-sm font-semibold uppercase tracking-[0.3em] text-indigo-600">Welcome back</p>
-                    <h2 className="mt-4 text-4xl font-semibold text-slate-950">Choose how you want to work today</h2>
-                    <p className="mt-6 text-lg leading-8 text-slate-600">
-                      Switch between assistant and doctor roles for {practiceName}. Open the workspace for the role you need.
-                    </p>
-
-                    <div className="mt-8 inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
-                      <button
-                        type="button"
-                        onClick={() => setLandingRole('assistant')}
-                        className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
-                          landingRole === 'assistant'
-                            ? 'bg-white text-slate-950 shadow-sm'
-                            : 'text-slate-600 hover:text-slate-950'
-                        }`}
-                      >
-                        Assistant{assistantName ? ` · ${assistantName}` : ''}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setLandingRole('doctor')}
-                        className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
-                          landingRole === 'doctor'
-                            ? 'bg-white text-slate-950 shadow-sm'
-                            : 'text-slate-600 hover:text-slate-950'
-                        }`}
-                      >
-                        Doctor{doctorName ? ` · ${doctorName}` : ''}
-                      </button>
-                    </div>
-
-                    {landingRole === 'assistant' ? (
-                      <div className="mt-8 rounded-3xl border border-blue-200 bg-blue-50/50 p-6">
-                        <p className="text-sm uppercase tracking-[0.24em] text-blue-600">Assistant role</p>
-                        <h3 className="mt-3 text-xl font-semibold text-slate-900">Patient intake and records</h3>
-                        <p className="mt-2 text-sm leading-6 text-slate-600">
-                          Create new patient cases and browse saved records. Download claim PDFs or ZIP exports once the doctor has finalized a case.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={handleOpenAssistantWorkspace}
-                          className="mt-6 rounded-2xl bg-primary-400 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-primary-500 transition"
-                        >
-                          Open assistant workspace
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="mt-8 rounded-3xl border border-violet-200 bg-violet-50/50 p-6">
-                        <p className="text-sm uppercase tracking-[0.24em] text-violet-600">Doctor role</p>
-                        <h3 className="mt-3 text-xl font-semibold text-slate-900">Claim workflow and sign-off</h3>
-                        <p className="mt-2 text-sm leading-6 text-slate-600">
-                          Review cases, select conditions, match ICD codes, and finalize claims for your patients.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={handleOpenDoctorWorkspace}
-                          className="mt-6 rounded-2xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white hover:bg-violet-700 transition"
-                        >
-                          Open doctor workspace
-                        </button>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm font-semibold uppercase tracking-[0.3em] text-indigo-600">Welcome</p>
-                    <h2 className="mt-4 text-4xl font-semibold text-slate-950">Your practice onboarding and claim workflow, built for teams.</h2>
-                    <p className="mt-6 text-lg leading-8 text-slate-600">
-                      Begin by registering your practice. Once onboarding is complete, you can switch between assistant and doctor roles from this page.
-                    </p>
-
-                    <div className="mt-10 grid gap-6 sm:grid-cols-2">
-                      <div className="rounded-3xl border border-slate-200 p-6">
-                        <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Start here</p>
-                        <h3 className="mt-3 text-xl font-semibold text-slate-900">Assistant intake</h3>
-                        <p className="mt-2 text-sm text-slate-600">Create patient records, add medical history, and begin new cases.</p>
-                      </div>
-                      <div className="rounded-3xl border border-slate-200 p-6">
-                        <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Next</p>
-                        <h3 className="mt-3 text-xl font-semibold text-slate-900">Doctor workflow</h3>
-                        <p className="mt-2 text-sm text-slate-600">Review cases, select conditions, match ICD codes, and finalize claims.</p>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </main>
+            <button
+              onClick={handleStartOnboarding}
+              className="rounded-xl bg-primary-400 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-primary-500 transition"
+            >
+              Practice onboarding
+            </button>
           </div>
+
+          {/* Main welcome content */}
+          <div className="rounded-[32px] bg-white p-10 border border-slate-200">
+            <div className="max-w-3xl">
+              {isPracticeReady ? (
+                <>
+                  <p className="text-sm font-semibold uppercase tracking-[0.3em] text-indigo-600">Welcome back</p>
+                  <h2 className="mt-4 text-4xl font-semibold text-slate-950">Choose how you want to work today</h2>
+                  <p className="mt-6 text-lg leading-8 text-slate-600">
+                    Switch between assistant and doctor roles for {practiceName}. Open the workspace for the role you need.
+                  </p>
+
+                  <div className="mt-8 inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
+                    <button
+                      type="button"
+                      onClick={() => setLandingRole('assistant')}
+                      className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
+                        landingRole === 'assistant'
+                          ? 'bg-white text-slate-950 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-950'
+                      }`}
+                    >
+                      Assistant{assistantName ? ` · ${assistantName}` : ''}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLandingRole('doctor')}
+                      className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
+                        landingRole === 'doctor'
+                          ? 'bg-white text-slate-950 shadow-sm'
+                          : 'text-slate-600 hover:text-slate-950'
+                      }`}
+                    >
+                      Doctor{doctorName ? ` · ${doctorName}` : ''}
+                    </button>
+                  </div>
+
+                  {landingRole === 'assistant' ? (
+                    <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-6">
+                      <p className="text-sm uppercase tracking-[0.24em] text-blue-600">Assistant role</p>
+                      <h3 className="mt-3 text-xl font-semibold text-slate-900">Patient intake and records</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        Create new patient cases and browse saved records. Download claim PDFs or ZIP exports once the doctor has finalized a case.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleOpenAssistantWorkspace}
+                        className="mt-6 rounded-2xl bg-primary-400 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-primary-500 transition"
+                      >
+                        Open assistant workspace
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-6">
+                      <p className="text-sm uppercase tracking-[0.24em] text-violet-600">Doctor role</p>
+                      <h3 className="mt-3 text-xl font-semibold text-slate-900">Claim workflow and sign-off</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        Review cases, select conditions, match ICD codes, and finalize claims for your patients.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={handleOpenDoctorWorkspace}
+                        className="mt-6 rounded-2xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white hover:bg-violet-700 transition"
+                      >
+                        Open doctor workspace
+                      </button>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="text-sm font-semibold uppercase tracking-[0.3em] text-indigo-600">Welcome</p>
+                  <h2 className="mt-4 text-4xl font-semibold text-slate-950">Your practice onboarding and claim workflow, built for teams.</h2>
+                  <p className="mt-6 text-lg leading-8 text-slate-600">
+                    Begin by registering your practice. Once onboarding is complete, you can switch between assistant and doctor roles from this page.
+                  </p>
+
+                  <div className="mt-10 grid gap-6 sm:grid-cols-2">
+                    <div className="rounded-3xl border border-slate-200 p-6">
+                      <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Start here</p>
+                      <h3 className="mt-3 text-xl font-semibold text-slate-900">Assistant intake</h3>
+                      <p className="mt-2 text-sm text-slate-600">Create patient records, add medical history, and begin new cases.</p>
+                    </div>
+                    <div className="rounded-3xl border border-slate-200 p-6">
+                      <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Next</p>
+                      <h3 className="mt-3 text-xl font-semibold text-slate-900">Doctor workflow</h3>
+                      <p className="mt-2 text-sm text-slate-600">Review cases, select conditions, match ICD codes, and finalize claims.</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-10">
+                    <button
+                      onClick={handleStartOnboarding}
+                      className="rounded-2xl bg-primary-400 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-primary-500 transition"
+                    >
+                      Get started — set up your practice
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
         </div>
       </div>
     );
@@ -1177,19 +1196,19 @@ export default function Home() {
 
   if (currentView === 'assistant-home') {
     return (
-      <div className="min-h-screen bg-slate-950 text-white py-10">
+      <div className="min-h-screen bg-white py-10">
         <div className="max-w-6xl mx-auto px-6">
           <div className="flex items-center justify-between gap-4 mb-8">
             <div>
               <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Assistant dashboard</p>
-              <h1 className="mt-3 text-4xl font-semibold text-white">Assistant workspace</h1>
-              <p className="mt-3 text-sm text-slate-400">
+              <h1 className="mt-3 text-4xl font-semibold text-slate-900">Assistant workspace</h1>
+              <p className="mt-3 text-sm text-slate-500">
                 {assistantName ? `${assistantName}` : 'Assistant'} — choose how you want to work with patient records.
               </p>
             </div>
             <button
               onClick={handleLogout}
-              className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:border-white/20 transition"
+              className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-400 transition"
             >
               Back to home
             </button>
@@ -1199,11 +1218,11 @@ export default function Home() {
             <button
               type="button"
               onClick={handleAssistantNewCase}
-              className="rounded-[28px] border border-white/10 bg-slate-900 p-10 text-left transition hover:border-blue-400"
+              className="rounded-[28px] border border-slate-200 bg-white p-10 text-left transition hover:border-blue-400 shadow-sm"
             >
-              <p className="text-sm uppercase tracking-[0.3em] text-indigo-400">New patient case</p>
-              <h2 className="mt-4 text-3xl font-semibold text-white">Create a new patient intake</h2>
-              <p className="mt-3 text-sm leading-6 text-slate-400">
+              <p className="text-sm uppercase tracking-[0.3em] text-blue-600">New patient case</p>
+              <h2 className="mt-4 text-3xl font-semibold text-slate-900">Create a new patient intake</h2>
+              <p className="mt-3 text-sm leading-6 text-slate-500">
                 Add patient details and start a case. The doctor completes the clinical workflow and finalizes the claim.
               </p>
             </button>
@@ -1211,11 +1230,11 @@ export default function Home() {
             <button
               type="button"
               onClick={handleAssistantViewRecords}
-              className="rounded-[28px] border border-white/10 bg-slate-900 p-10 text-left transition hover:border-violet-400"
+              className="rounded-[28px] border border-slate-200 bg-white p-10 text-left transition hover:border-violet-400 shadow-sm"
             >
-              <p className="text-sm uppercase tracking-[0.3em] text-violet-400">Patient records</p>
-              <h2 className="mt-4 text-3xl font-semibold text-white">View and download cases</h2>
-              <p className="mt-3 text-sm leading-6 text-slate-400">
+              <p className="text-sm uppercase tracking-[0.3em] text-violet-600">Patient records</p>
+              <h2 className="mt-4 text-3xl font-semibold text-slate-900">View and download cases</h2>
+              <p className="mt-3 text-sm leading-6 text-slate-500">
                 Browse existing cases. Export claim PDFs or download documents with attachments (ZIP) when ready.
               </p>
             </button>
@@ -1227,60 +1246,60 @@ export default function Home() {
 
   if (currentView === 'onboarding') {
     return (
-      <div className="min-h-screen bg-slate-950 text-white py-10">
+      <div className="min-h-screen bg-white py-10">
         <div className="max-w-4xl mx-auto px-6">
           <div className="flex items-center justify-between gap-4 mb-8">
             <div>
               <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Practice onboarding</p>
-              <h1 className="mt-3 text-4xl font-semibold text-white">Set up your clinic and team</h1>
-              <p className="mt-2 text-slate-400">Enter practice details once, then let your assistant and doctor use the system from the same workflow.</p>
+              <h1 className="mt-3 text-4xl font-semibold text-slate-900">Set up your clinic and team</h1>
+              <p className="mt-2 text-slate-500">Enter practice details once, then let your assistant and doctor use the system from the same workflow.</p>
             </div>
             <button
               onClick={handleLogout}
-              className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:border-white/20 transition"
+              className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-400 transition"
             >
               Back to home
             </button>
           </div>
 
-          <form onSubmit={handleOnboardingSubmit} className="rounded-[32px] bg-slate-900 border border-white/10 p-8 shadow-2xl">
+          <form onSubmit={handleOnboardingSubmit} className="rounded-[32px] bg-white border border-slate-200 p-8 shadow-sm">
             <div className="grid gap-6">
               <div>
-                <label className="text-sm font-medium text-slate-200">Practice name</label>
+                <label className="text-sm font-medium text-slate-700">Practice name</label>
                 <input
                   value={onboardingPracticeName}
                   onChange={(e) => setOnboardingPracticeName(e.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white focus:border-primary-400 focus:outline-none"
+                  className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Enter your practice name"
                 />
-                {onboardingErrors.practiceName && <p className="mt-2 text-sm text-rose-400">{onboardingErrors.practiceName}</p>}
+                {onboardingErrors.practiceName && <p className="mt-2 text-sm text-rose-500">{onboardingErrors.practiceName}</p>}
               </div>
 
               <div>
-                <label className="text-sm font-medium text-slate-200">Doctor name</label>
+                <label className="text-sm font-medium text-slate-700">Doctor name</label>
                 <input
                   value={onboardingDoctorName}
                   onChange={(e) => setOnboardingDoctorName(e.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white focus:border-primary-400 focus:outline-none"
+                  className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Enter doctor name"
                 />
-                {onboardingErrors.doctorName && <p className="mt-2 text-sm text-rose-400">{onboardingErrors.doctorName}</p>}
+                {onboardingErrors.doctorName && <p className="mt-2 text-sm text-rose-500">{onboardingErrors.doctorName}</p>}
               </div>
 
               <div>
-                <label className="text-sm font-medium text-slate-200">Assistant name</label>
+                <label className="text-sm font-medium text-slate-700">Assistant name</label>
                 <input
                   value={onboardingAssistantName}
                   onChange={(e) => setOnboardingAssistantName(e.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white focus:border-primary-400 focus:outline-none"
+                  className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="e.g. Sarah"
                 />
-                {onboardingErrors.assistantName && <p className="mt-2 text-sm text-rose-400">{onboardingErrors.assistantName}</p>}
+                {onboardingErrors.assistantName && <p className="mt-2 text-sm text-rose-500">{onboardingErrors.assistantName}</p>}
               </div>
 
               <button
                 type="submit"
-                className="mt-4 rounded-2xl bg-primary-400 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-primary-500 transition"
+                className="mt-4 btn-primary"
               >
                 Save practice details
               </button>
@@ -1314,6 +1333,7 @@ export default function Home() {
         onSave={handlePatientInfoSubmit}
         onCancel={handleCancelPatientInfo}
         prefillData={patientInfoPrefill}
+        showClaimType={userRole !== 'assistant'}
       />
     );
   }
@@ -1341,10 +1361,21 @@ export default function Home() {
         caseData={currentCaseForView}
         onStartClinicalNote={handleStartClinicalNote}
         onContinueWorkflow={handleContinueWorkflow}
-        onClose={cameFromProfile ? handleBackToPatientProfile : handleBackToDashboard}
+        onClose={
+          userRole === 'assistant'
+            ? handleBackToAssistantHome
+            : cameFromProfile
+              ? handleBackToPatientProfile
+              : handleBackToDashboard
+        }
         readOnly={userRole === 'assistant'}
         onExportPdf={handleAssistantExportPdf}
         onExportZip={handleAssistantExportZip}
+        onSelectClaimType={
+          userRole === 'doctor' && selectedCaseId
+            ? (claimType) => handleDoctorSelectClaimType(selectedCaseId, claimType)
+            : undefined
+        }
       />
     );
   }
@@ -1352,9 +1383,9 @@ export default function Home() {
   // Workflow view (doctor only — assistants use case view + exports)
   if (currentView === 'workflow' && userRole === 'assistant') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
-        <div className="max-w-md rounded-xl bg-white border border-gray-200 p-8 text-center shadow-sm">
-          <p className="text-gray-700">The clinical workflow is only available to the doctor role.</p>
+      <div className="min-h-screen bg-white flex items-center justify-center p-6">
+        <div className="max-w-md rounded-2xl bg-slate-50 border border-slate-200 p-8 text-center shadow-sm">
+          <p className="text-slate-600">The clinical workflow is only available to the doctor role.</p>
           <button
             type="button"
             onClick={handleBackToDashboard}
@@ -1376,21 +1407,22 @@ export default function Home() {
     };
 
     return (
-      <div className="min-h-screen bg-primary-50">
+      <div className="min-h-screen bg-white">
         {/* Header */}
-        <header className="bg-white border-b border-primary-200 sticky top-0 z-30">
+        <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-20">
               <div className="flex items-center gap-4">
                 <button
                   onClick={handleBackToDashboard}
-                  className="p-2 hover:bg-gray-100 rounded-lg"
+                  className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+                  title="Back"
                 >
-                  <ArrowLeft className="w-6 h-6" />
+                  <ArrowLeft className="w-6 h-6 text-slate-500" />
                 </button>
                 <div>
-                  <p className="text-xl font-bold text-gray-800 tracking-tight">{claimTypeLabel[currentClaimType]}</p>
-                  <p className="text-sm text-gray-600">{patientName} ({patientId})</p>
+                  <p className="text-xl font-semibold text-slate-900 tracking-tight">{claimTypeLabel[currentClaimType]}</p>
+                  <p className="text-sm text-slate-500">{patientName} ({patientId})</p>
                 </div>
               </div>
             </div>
@@ -1402,7 +1434,7 @@ export default function Home() {
         {currentClaimType === 'diagnostic' && (
           <>
             {/* Progress Steps */}
-            <div className="mb-8 bg-white rounded-xl shadow-sm border border-primary-200 p-6">
+            <div className="mb-8 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
               <div className="flex items-center justify-between">
                 {steps.map((step, index) => (
                   <div key={step.id} className="flex items-center flex-1">
@@ -1410,10 +1442,10 @@ export default function Home() {
                       <div
                         className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
                           store.currentStep > step.id
-                            ? 'bg-accent-600 text-white'
+                            ? 'bg-gradient-to-r from-blue-500 to-violet-600 text-white'
                             : store.currentStep === step.id
-                            ? 'bg-primary-400 text-brand-black'
-                            : 'bg-gray-200 text-gray-600'
+                            ? 'bg-gradient-to-r from-blue-500 to-violet-600 text-white'
+                            : 'bg-violet-100 text-violet-500'
                         }`}
                       >
                         {store.currentStep > step.id ? (
@@ -1423,11 +1455,11 @@ export default function Home() {
                         )}
                       </div>
                       <span className={`mt-2 text-sm font-medium text-center ${
-                        store.currentStep >= step.id ? 'text-gray-900' : 'text-gray-500'
+                        store.currentStep >= step.id ? 'text-slate-900' : 'text-violet-400'
                       }`}>
                         {step.title}
                         {step.id === 4 && store.currentStep === 4 && (
-                          <span className="block text-xs text-primary-500 mt-0.5">
+                          <span className="block text-xs text-blue-500 mt-0.5">
                             {store.medicationSubstep === 1 ? '(Selection)' : '(Registration Note)'}
                           </span>
                         )}
@@ -1436,8 +1468,8 @@ export default function Home() {
                     {index < steps.length - 1 && (
                       <div className="relative flex-1 mx-4 flex items-center">
                         <div
-                          className={`h-1 w-full ${
-                            store.currentStep > step.id ? 'bg-accent-500' : 'bg-gray-200'
+                          className={`h-1 w-full rounded-full ${
+                            store.currentStep > step.id ? 'bg-gradient-to-r from-blue-500 to-violet-600' : 'bg-slate-200'
                           }`}
                         />
                         {store.currentStep === step.id + 1 && (
@@ -1758,14 +1790,24 @@ export default function Home() {
     );
   }
 
-  // Fallback
+    // Fallback
+    return (
+      <Dashboard
+        cases={store.cases}
+        onNewCase={handleNewCaseClick}
+        onViewCase={handleViewCase}
+        onViewPatientProfile={handleViewPatientProfile}
+      />
+    );
+  }; // end renderView
+
   return (
-    <Dashboard
-      cases={store.cases}
-      onNewCase={handleNewCaseClick}
-      onViewCase={handleViewCase}
-      onViewPatientProfile={handleViewPatientProfile}
-    />
+    <div className="flex min-h-screen bg-slate-950">
+      <AppSidebar currentView={currentView} onNavigate={setCurrentView} />
+      <div className="flex-1 ml-60 min-w-0">
+        {renderView()}
+      </div>
+    </div>
   );
 }
 

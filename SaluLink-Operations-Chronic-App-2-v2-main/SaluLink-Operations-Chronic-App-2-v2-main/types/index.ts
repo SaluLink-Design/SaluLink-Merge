@@ -76,7 +76,7 @@ export interface PatientCase {
   patientEmail?: string;
   patientPhone?: string;
   medicalAidNumber?: string;
-  claimType: ClaimType;
+  claimType?: ClaimType;
   createdAt: Date;
   updatedAt: Date;
   clinicalNote: string;

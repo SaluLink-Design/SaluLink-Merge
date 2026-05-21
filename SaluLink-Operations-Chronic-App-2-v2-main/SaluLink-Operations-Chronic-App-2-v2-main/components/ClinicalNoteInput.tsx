@@ -14,14 +14,14 @@ const ClinicalNoteInput = ({ value, onChange, onAnalyze, isAnalyzing }: Clinical
   return (
     <div className="card">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-bold text-gray-900">Clinical Note</h2>
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <Sparkles className="w-4 h-4" />
-          <span>Powered by ClinicalBERT</span>
+        <h2 className="text-2xl font-bold text-slate-900">Clinical Note</h2>
+        <div className="flex items-center gap-2 text-sm text-violet-600 font-medium">
+          <Sparkles className="w-4 h-4 text-violet-500" />
+          <span>Powered by Authi</span>
         </div>
       </div>
       
-      <p className="text-gray-600 mb-4">
+      <p className="text-slate-600 mb-4">
         Enter or paste the specialist's clinical notes below. The AI will analyze the text to identify potential chronic conditions.
       </p>
       
@@ -34,9 +34,14 @@ const ClinicalNoteInput = ({ value, onChange, onAnalyze, isAnalyzing }: Clinical
       />
       
       <div className="flex items-center justify-between mt-6">
-        <div className="text-sm text-gray-500">
-          {value.length} characters
-        </div>
+        <button
+          type="button"
+          className="text-sm text-slate-500 hover:text-slate-700 transition-colors"
+          onClick={() => onChange('')}
+          disabled={!value.trim() || isAnalyzing}
+        >
+          Clear
+        </button>
         
         <button
           className="btn-primary flex items-center gap-2"
@@ -51,7 +56,7 @@ const ClinicalNoteInput = ({ value, onChange, onAnalyze, isAnalyzing }: Clinical
           ) : (
             <>
               <Sparkles className="w-5 h-5" />
-              <span>Analyze Note</span>
+              <span>Analyze</span>
             </>
           )}
         </button>
