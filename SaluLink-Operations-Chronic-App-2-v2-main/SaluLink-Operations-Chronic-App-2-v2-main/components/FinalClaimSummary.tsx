@@ -17,6 +17,7 @@ interface FinalClaimSummaryProps {
   onConfirm: () => void;
   onBack: () => void;
   onNewClaim: () => void;
+  confirmLabel?: string;
 }
 
 const FinalClaimSummary = ({
@@ -32,6 +33,7 @@ const FinalClaimSummary = ({
   onConfirm,
   onBack,
   onNewClaim,
+  confirmLabel = 'Confirm and Finalize Claim',
 }: FinalClaimSummaryProps) => {
   return (
     <div className="space-y-6">
@@ -243,7 +245,7 @@ const FinalClaimSummary = ({
               className="btn-primary flex-1 flex items-center justify-center gap-2"
             >
               <CheckCircle className="w-5 h-5" />
-              Confirm and Finalize Claim
+              {confirmLabel}
             </button>
           </div>
 

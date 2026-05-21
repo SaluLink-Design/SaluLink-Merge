@@ -15,9 +15,12 @@ interface DashboardProps {
     inProgress: number;
     completed: number;
   };
+  practiceName?: string;
+  userRole?: string | null;
+  onLogout?: () => void;
 }
 
-const Dashboard = ({ cases, onNewCase, onViewCase, totalStats }: DashboardProps) => {
+const Dashboard = ({ cases, onNewCase, onViewCase, totalStats, practiceName, userRole, onLogout }: DashboardProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | string>('all');
   const [sortBy, setSortBy] = useState<'date' | 'name'>('date');
@@ -74,9 +77,26 @@ const Dashboard = ({ cases, onNewCase, onViewCase, totalStats }: DashboardProps)
       {/* Header */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-8">
-          <div className="mb-8">
-            <h1 className="text-4xl font-bold text-gray-900">SaluLink Dashboard</h1>
-            <p className="text-gray-600 mt-1">Chronic Condition Management System</p>
+          <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <h1 className="text-4xl font-bold text-gray-900">SaluLink Dashboard</h1>
+              <p className="text-gray-600 mt-1">Chronic Condition Management System</p>
+            </div>
+            {(practiceName || userRole) && (
+              <div className="rounded-3xl bg-slate-800 px-5 py-4 text-white shadow-sm">
+                <p className="text-sm text-slate-300">Practice</p>
+                <p className="mt-1 text-lg font-semibold text-white">{practiceName || 'Your practice'}</p>
+                <p className="text-sm text-slate-400">Role: {userRole === 'assistant' ? 'Assistant' : userRole === 'doctor' ? 'Doctor' : 'Guest'}</p>
+                {onLogout && (
+                  <button
+                    onClick={onLogout}
+                    className="mt-3 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-700 transition"
+                  >
+                    Logout
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Stats */}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { useStore } from '@/lib/store';
 import { DataService } from '@/lib/dataService';
 import { PDFExportService } from '@/lib/pdfExport';
@@ -29,8 +29,9 @@ import { MatchedCondition, PatientCase } from '@/types';
 import type { PatientExportData } from '@/lib/patientExport';
 
 type WorkflowMode = 'new' | 'ongoing' | 'medication' | 'referral';
+type UserRole = 'assistant' | 'doctor';
 
-type AppView = 'dashboard' | 'patient-info' | 'case-options' | 'workflow';
+type AppView = 'landing' | 'onboarding' | 'assistant-home' | 'dashboard' | 'patient-info' | 'case-options' | 'workflow';
 
 const deduplicateMedications = (medications: any[]) => {
   return medications.reduce((acc: any[], current) => {
@@ -61,8 +62,17 @@ export default function Home() {
   const [showAllCases, setShowAllCases] = useState(false);
   const [showPatientExport, setShowPatientExport] = useState(false);
   
+  const [practiceName, setPracticeName] = useState('');
+  const [doctorName, setDoctorName] = useState('');
+  const [assistantName, setAssistantName] = useState('');
+  const [userRole, setUserRole] = useState<UserRole | null>(null);
+  const [onboardingPracticeName, setOnboardingPracticeName] = useState('');
+  const [onboardingDoctorName, setOnboardingDoctorName] = useState('');
+  const [onboardingAssistantName, setOnboardingAssistantName] = useState('');
+  const [onboardingErrors, setOnboardingErrors] = useState<Partial<Record<'practiceName' | 'doctorName' | 'assistantName', string>>>({});
+
   // New dashboard workflow states
-  const [currentView, setCurrentView] = useState<AppView>('dashboard');
+  const [currentView, setCurrentView] = useState<AppView>('landing');
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [currentCaseForView, setCurrentCaseForView] = useState<PatientCase | null>(null);
 
@@ -73,6 +83,86 @@ export default function Home() {
     };
     init();
   }, []);
+
+  const handleStartOnboarding = () => {
+    setCurrentView('onboarding');
+  };
+
+  const handleSavePracticeInfo = (practice: { practiceName: string; doctorName: string; assistantName: string }) => {
+    setPracticeName(practice.practiceName);
+    setDoctorName(practice.doctorName);
+    setAssistantName(practice.assistantName);
+    // After saving practice details, remain on the onboarding page so
+    // the user can explicitly choose Assistant or Doctor roles later.
+    setUserRole(null);
+    setCurrentView('onboarding');
+  };
+
+  const handleOnboardingSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    const errors: typeof onboardingErrors = {};
+
+    if (!onboardingPracticeName.trim()) {
+      errors.practiceName = 'Practice name is required';
+    }
+    if (!onboardingDoctorName.trim()) {
+      errors.doctorName = 'Doctor name is required';
+    }
+    if (!onboardingAssistantName.trim()) {
+      errors.assistantName = 'Assistant name is required';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setOnboardingErrors(errors);
+      return;
+    }
+
+    setOnboardingErrors({});
+    handleSavePracticeInfo({
+      practiceName: onboardingPracticeName.trim(),
+      doctorName: onboardingDoctorName.trim(),
+      assistantName: onboardingAssistantName.trim(),
+    });
+  };
+
+  const handleLoginAsAssistant = () => {
+    if (!practiceName) {
+      setCurrentView('onboarding');
+      return;
+    }
+    setUserRole('assistant');
+    setCurrentView('assistant-home');
+  };
+
+  const handleAssistantNewCase = () => {
+    setCurrentView('patient-info');
+  };
+
+  const handleAssistantViewRecords = () => {
+    setCurrentView('dashboard');
+  };
+
+  const handleLoginAsDoctor = () => {
+    if (!practiceName) {
+      setCurrentView('onboarding');
+      return;
+    }
+    setUserRole('doctor');
+    setCurrentView('dashboard');
+  };
+
+  const handleLogout = () => {
+    setUserRole(null);
+    setCurrentView('landing');
+    setSelectedCaseId(null);
+    setCurrentCaseForView(null);
+    setPatientName('');
+    setPatientId('');
+    setPatientEmail('');
+    setPatientPhone('');
+    setMedicalAidNumber('');
+    store.resetWorkflow();
+  };
 
   // Dashboard workflow handlers
   const handleNewCaseClick = () => {
@@ -315,17 +405,32 @@ export default function Home() {
     pdfService.exportInitialClaim(patientCase);
   };
 
+  const getPatientInfoForSave = () => {
+    const selectedCase = selectedCaseId
+      ? store.cases.find((c) => c.id === selectedCaseId)
+      : null;
+
+    return {
+      patientName: patientName || selectedCase?.patientName || '',
+      patientId: patientId || selectedCase?.patientId || '',
+      patientEmail: patientEmail || selectedCase?.patientEmail || '',
+      patientPhone: patientPhone || selectedCase?.patientPhone || '',
+      medicalAidNumber: medicalAidNumber || selectedCase?.medicalAidNumber || '',
+    };
+  };
+
   const handleExportWithAttachments = async () => {
     if (!store.selectedCondition || !store.selectedIcdCode) {
       alert('Please complete the workflow first');
       return;
     }
 
+    const patientData = getPatientInfoForSave();
     const pdfService = new PDFExportService();
     const patientCase = {
       id: Date.now().toString(),
-      patientName: patientName || 'Patient',
-      patientId: patientId || 'N/A',
+      patientName: patientData.patientName || 'Patient',
+      patientId: patientData.patientId || 'N/A',
       createdAt: new Date(),
       updatedAt: new Date(),
       clinicalNote: store.clinicalNote,
@@ -344,7 +449,8 @@ export default function Home() {
   };
 
   const handleSaveCaseOnly = async () => {
-    if (!patientName || !patientId) {
+    const patientData = getPatientInfoForSave();
+    if (!patientData.patientName || !patientData.patientId) {
       alert('Please enter patient name and ID');
       return;
     }
@@ -352,11 +458,11 @@ export default function Home() {
     setIsSaving(true);
     try {
       const result = await saveCaseToDatabase({
-        patientName,
-        patientId,
-        patientEmail,
-        patientPhone,
-        medicalAidNumber,
+        patientName: patientData.patientName,
+        patientId: patientData.patientId,
+        patientEmail: patientData.patientEmail,
+        patientPhone: patientData.patientPhone,
+        medicalAidNumber: patientData.medicalAidNumber,
         clinicalNote: store.clinicalNote,
         conditionName: store.selectedCondition || '',
         icdCode: store.selectedIcdCode || '',
@@ -451,13 +557,14 @@ export default function Home() {
       return;
     }
 
+    const patientData = getPatientInfoForSave();
     if (selectedCaseId) {
       store.updateCase(selectedCaseId, {
-        patientName,
-        patientId,
-        patientEmail,
-        patientPhone,
-        medicalAidNumber,
+        patientName: patientData.patientName,
+        patientId: patientData.patientId,
+        patientEmail: patientData.patientEmail,
+        patientPhone: patientData.patientPhone,
+        medicalAidNumber: patientData.medicalAidNumber,
         clinicalNote: store.clinicalNote,
         condition: store.selectedCondition || '',
         icdCode: store.selectedIcdCode || '',
@@ -475,7 +582,7 @@ export default function Home() {
         updatedAt: new Date(),
       });
     } else {
-      store.saveCase(patientName, patientId);
+      store.saveCase(patientData.patientName, patientData.patientId);
       if (store.currentCaseId) {
         setSelectedCaseId(store.currentCaseId);
       }
@@ -795,10 +902,222 @@ export default function Home() {
 
   if (!isInitialized) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-primary-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-600">Loading SaluLink Chronic App...</p>
+          <p className="text-gray-300">Loading SaluLink Chronic App...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'landing') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white">
+        <div className="max-w-7xl mx-auto px-6 py-10">
+          <div className="grid lg:grid-cols-[280px_1fr] gap-8">
+            <aside className="rounded-[32px] bg-slate-900 border border-white/10 p-8 shadow-2xl">
+              <div className="flex items-center gap-3 mb-10">
+                <div className="w-12 h-12 rounded-3xl bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center text-white text-xl font-bold">S</div>
+                <div>
+                  <p className="text-sm text-slate-400 uppercase tracking-[0.3em]">SaluLink</p>
+                  <h1 className="text-2xl font-semibold">Chronic Treatment App</h1>
+                </div>
+              </div>
+
+              <div className="space-y-5">
+                <div className="rounded-3xl bg-slate-800 p-5 border border-white/10">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Practice</p>
+                  <p className="mt-3 text-lg font-semibold text-white">
+                    {practiceName || 'Dr. Johnson’s practice'}
+                  </p>
+                  <p className="mt-2 text-sm text-slate-400">
+                    Set up your clinic, invite your assistant, and start patient intake.
+                  </p>
+                </div>
+
+                <div className="rounded-3xl bg-slate-800 p-5 border border-white/10">
+                  <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Roles</p>
+                  <div className="mt-4 space-y-3">
+                    <button
+                      onClick={handleLoginAsAssistant}
+                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-left text-sm font-semibold text-white hover:border-blue-400 transition"
+                    >
+                      Assistant login
+                      <span className="block text-xs text-slate-500 mt-1">Choose between creating a new patient case or viewing existing records.</span>
+                    </button>
+                    <button
+                      onClick={handleLoginAsDoctor}
+                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-left text-sm font-semibold text-white hover:border-violet-400 transition"
+                    >
+                      Doctor login
+                      <span className="block text-xs text-slate-500 mt-1">Review cases, complete claim workflow, and sign off.</span>
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleStartOnboarding}
+                  className="w-full rounded-2xl bg-primary-400 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-primary-500 transition"
+                >
+                  Practice onboarding
+                </button>
+              </div>
+            </aside>
+
+            <main className="rounded-[32px] bg-white p-10 shadow-2xl">
+              <div className="max-w-3xl">
+                <p className="text-sm font-semibold uppercase tracking-[0.3em] text-indigo-600">Welcome</p>
+                <h2 className="mt-4 text-4xl font-semibold text-slate-950">Your practice onboarding and claim workflow, built for teams.</h2>
+                <p className="mt-6 text-lg leading-8 text-slate-600">
+                  Begin by registering your practice. The assistant can capture patient intake first, then the doctor can return to complete the claim workflow and save the case.
+                </p>
+
+                <div className="mt-10 grid gap-6 sm:grid-cols-2">
+                  <div className="rounded-3xl border border-slate-200 p-6">
+                    <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Start here</p>
+                    <h3 className="mt-3 text-xl font-semibold text-slate-900">Assistant intake</h3>
+                    <p className="mt-2 text-sm text-slate-600">Create patient records, add medical history, and begin new cases.</p>
+                  </div>
+                  <div className="rounded-3xl border border-slate-200 p-6">
+                    <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Next</p>
+                    <h3 className="mt-3 text-xl font-semibold text-slate-900">Doctor workflow</h3>
+                    <p className="mt-2 text-sm text-slate-600">Review cases, select conditions, match ICD codes, and finalize claims.</p>
+                  </div>
+                </div>
+              </div>
+            </main>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'assistant-home') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white py-10">
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="flex items-center justify-between gap-4 mb-8">
+            <div>
+              <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Assistant dashboard</p>
+              <h1 className="mt-3 text-4xl font-semibold text-white">Assistant workspace</h1>
+              <p className="mt-3 text-sm text-slate-400">
+                {assistantName ? `${assistantName}` : 'Assistant'} — choose how you want to work with patient records.
+              </p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:border-white/20 transition"
+            >
+              Back to home
+            </button>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <button
+              onClick={handleAssistantNewCase}
+              className="rounded-[28px] border border-white/10 bg-slate-900 p-10 text-left transition hover:border-blue-400"
+            >
+              <p className="text-sm uppercase tracking-[0.3em] text-indigo-400">New patient case</p>
+              <h2 className="mt-4 text-3xl font-semibold text-white">Create a new patient intake</h2>
+              <p className="mt-3 text-sm leading-6 text-slate-400">
+                Add a new patient record, capture clinical history, and start a case for the doctor to finalize.
+              </p>
+            </button>
+
+            <button
+              onClick={handleAssistantViewRecords}
+              className="rounded-[28px] border border-white/10 bg-slate-900 p-10 text-left transition hover:border-violet-400"
+            >
+              <p className="text-sm uppercase tracking-[0.3em] text-violet-400">View patient records</p>
+              <h2 className="mt-4 text-3xl font-semibold text-white">Browse existing cases</h2>
+              <p className="mt-3 text-sm leading-6 text-slate-400">
+                Review previously created patient cases and download PDFs for existing records.
+              </p>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (currentView === 'onboarding') {
+    return (
+      <div className="min-h-screen bg-slate-950 text-white py-10">
+        <div className="max-w-4xl mx-auto px-6">
+          <div className="flex items-center justify-between gap-4 mb-8">
+            <div>
+              <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Practice onboarding</p>
+              <h1 className="mt-3 text-4xl font-semibold text-white">Set up your clinic and team</h1>
+              <p className="mt-2 text-slate-400">Enter practice details once, then let your assistant and doctor use the system from the same workflow.</p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:border-white/20 transition"
+            >
+              Back to home
+            </button>
+          </div>
+
+          <form onSubmit={handleOnboardingSubmit} className="rounded-[32px] bg-slate-900 border border-white/10 p-8 shadow-2xl">
+            <div className="grid gap-6">
+              <div>
+                <label className="text-sm font-medium text-slate-200">Practice name</label>
+                <input
+                  value={onboardingPracticeName}
+                  onChange={(e) => setOnboardingPracticeName(e.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white focus:border-primary-400 focus:outline-none"
+                  placeholder="e.g. Dr. Johnson’s Practice"
+                />
+                {onboardingErrors.practiceName && <p className="mt-2 text-sm text-rose-400">{onboardingErrors.practiceName}</p>}
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-slate-200">Doctor name</label>
+                <input
+                  value={onboardingDoctorName}
+                  onChange={(e) => setOnboardingDoctorName(e.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white focus:border-primary-400 focus:outline-none"
+                  placeholder="e.g. Dr. Johnson"
+                />
+                {onboardingErrors.doctorName && <p className="mt-2 text-sm text-rose-400">{onboardingErrors.doctorName}</p>}
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-slate-200">Assistant name</label>
+                <input
+                  value={onboardingAssistantName}
+                  onChange={(e) => setOnboardingAssistantName(e.target.value)}
+                  className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white focus:border-primary-400 focus:outline-none"
+                  placeholder="e.g. Sarah"
+                />
+                {onboardingErrors.assistantName && <p className="mt-2 text-sm text-rose-400">{onboardingErrors.assistantName}</p>}
+              </div>
+
+              <button
+                type="submit"
+                className="mt-4 rounded-2xl bg-primary-400 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-primary-500 transition"
+              >
+                Save practice details
+              </button>
+            </div>
+          </form>
+
+          <div className="mt-6 flex gap-3">
+            <button
+              onClick={handleLoginAsAssistant}
+              className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:border-blue-400 transition"
+            >
+              Assistant login
+            </button>
+
+            <button
+              onClick={handleLoginAsDoctor}
+              className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:border-violet-400 transition"
+            >
+              Doctor login
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -812,6 +1131,9 @@ export default function Home() {
           cases={store.cases}
           onNewCase={handleNewCaseClick}
           onViewCase={handleViewCase}
+          practiceName={practiceName}
+          userRole={userRole}
+          onLogout={handleLogout}
         />
       </div>
     );
@@ -1029,6 +1351,7 @@ export default function Home() {
                     onConfirm={() => setShowSaveModal(true)}
                     onBack={handlePreviousStep}
                     onNewClaim={handleNewClaim}
+                    confirmLabel={userRole === 'doctor' ? 'Confirm Claim' : 'Confirm and Finalize Claim'}
                   />
 
                   {showCaseActions && store.currentCaseId && (
@@ -1154,64 +1477,68 @@ export default function Home() {
       {showSaveModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-bold mb-2">Finalize Patient Case</h3>
+            <h3 className="text-xl font-bold mb-2">{userRole === 'doctor' ? 'Confirm Claim' : 'Finalize Patient Case'}</h3>
             <p className="text-sm text-gray-600 mb-6">
-              Enter patient details to save the case. You can choose to save only or export documents.
+              {userRole === 'doctor'
+                ? 'Save or export the claim without re-entering the patient information.'
+                : 'Enter patient details to save the case. You can choose to save only or export documents.'}
             </p>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Patient Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-colors"
-                  placeholder="Enter patient name"
-                  value={patientName}
-                  onChange={(e) => setPatientName(e.target.value)}
-                  disabled={isSaving}
-                />
+            {userRole !== 'doctor' && (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Patient Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-colors"
+                    placeholder="Enter patient name"
+                    value={patientName}
+                    onChange={(e) => setPatientName(e.target.value)}
+                    disabled={isSaving}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Patient ID / Medical Record Number <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-colors"
+                    placeholder="Enter patient ID or MRN"
+                    value={patientId}
+                    onChange={(e) => setPatientId(e.target.value)}
+                    disabled={isSaving}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Patient Email (Optional)
+                  </label>
+                  <input
+                    type="email"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-colors"
+                    placeholder="patient@example.com"
+                    value={patientEmail}
+                    onChange={(e) => setPatientEmail(e.target.value)}
+                    disabled={isSaving}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Patient Phone (Optional)
+                  </label>
+                  <input
+                    type="tel"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-colors"
+                    placeholder="+27 XX XXX XXXX"
+                    value={patientPhone}
+                    onChange={(e) => setPatientPhone(e.target.value)}
+                    disabled={isSaving}
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Patient ID / Medical Record Number <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-colors"
-                  placeholder="Enter patient ID or MRN"
-                  value={patientId}
-                  onChange={(e) => setPatientId(e.target.value)}
-                  disabled={isSaving}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Patient Email (Optional)
-                </label>
-                <input
-                  type="email"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-colors"
-                  placeholder="patient@example.com"
-                  value={patientEmail}
-                  onChange={(e) => setPatientEmail(e.target.value)}
-                  disabled={isSaving}
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Patient Phone (Optional)
-                </label>
-                <input
-                  type="tel"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-colors"
-                  placeholder="+27 XX XXX XXXX"
-                  value={patientPhone}
-                  onChange={(e) => setPatientPhone(e.target.value)}
-                  disabled={isSaving}
-                />
-              </div>
-            </div>
+            )}
 
             <div className="mt-6 pt-4 border-t border-gray-200">
               <p className="text-sm font-medium text-gray-700 mb-3">Save Options:</p>

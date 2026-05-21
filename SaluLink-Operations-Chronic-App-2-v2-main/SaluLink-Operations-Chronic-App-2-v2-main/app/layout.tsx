@@ -14,13 +14,21 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className="antialiased bg-primary-50">
-        <header className="bg-white border-b">
-          <div className="max-w-6xl mx-auto flex items-center justify-between p-4">
-            <div className="text-lg font-semibold">SaluLink Chronic Treatment App</div>
-            <nav>
-              <Link href="/" className="mr-4 text-sm text-gray-700">Home</Link>
-              <Link href="/dashboard" className="text-sm text-gray-700">Dashboard</Link>
+      <body className="antialiased bg-slate-950 text-slate-100">
+        <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/95 backdrop-blur">
+          <div className="max-w-7xl mx-auto flex items-center justify-between px-6 py-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-3xl bg-gradient-to-br from-blue-500 to-violet-500 flex items-center justify-center text-white text-lg font-bold">
+                S
+              </div>
+              <div>
+                <p className="text-sm uppercase tracking-[0.3em] text-slate-400">SaluLink</p>
+                <p className="text-base font-semibold text-white">Chronic Treatment App</p>
+              </div>
+            </div>
+            <nav className="flex items-center gap-4 text-sm text-slate-300">
+              <Link href="/" className="hover:text-white transition">Home</Link>
+              <Link href="/" className="hover:text-white transition">Dashboard</Link>
             </nav>
           </div>
         </header>

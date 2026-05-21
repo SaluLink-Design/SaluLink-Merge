@@ -31,10 +31,10 @@ const PatientInfoForm = ({ onSave, onCancel, isLoading = false }: PatientInfoFor
     plan: 'Core',
   });
 
-  const [errors, setErrors] = useState<Partial<PatientInfo>>({});
+  const [errors, setErrors] = useState<Partial<Record<keyof PatientInfo, string>>>({});
 
   const validateForm = (): boolean => {
-    const newErrors: Partial<PatientInfo> = {};
+    const newErrors: Partial<Record<keyof PatientInfo, string>> = {};
 
     if (!formData.patientName.trim()) newErrors.patientName = 'Patient name is required';
     if (!formData.patientId.trim()) newErrors.patientId = 'Patient ID is required';
