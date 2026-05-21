@@ -5,7 +5,7 @@ import { useStore } from '@/lib/store';
 import { DataService } from '@/lib/dataService';
 import { PDFExportService } from '@/lib/pdfExport';
 import { saveCaseToDatabase } from '@/lib/caseService';
-import { Menu, FileDown, Save, CheckCircle, ArrowLeft, ArrowRight, ChevronRight } from 'lucide-react';
+import { Save, CheckCircle, ArrowLeft, ArrowRight, ChevronRight } from 'lucide-react';
 
 // Components
 import ClinicalNoteInput from '@/components/ClinicalNoteInput';
@@ -14,9 +14,6 @@ import IcdCodeSelection from '@/components/IcdCodeSelection';
 import DiagnosticBasket from '@/components/DiagnosticBasket';
 import MedicationSelection from '@/components/MedicationSelection';
 import ChronicRegistrationNote from '@/components/ChronicRegistrationNote';
-import Sidebar from '@/components/Sidebar';
-import AllCasesView from '@/components/AllCasesView';
-import CaseActions from '@/components/CaseActions';
 import OngoingManagement from '@/components/OngoingManagement';
 import MedicationReport from '@/components/MedicationReport';
 import Referral from '@/components/Referral';
@@ -25,13 +22,13 @@ import PatientExportModal from '@/components/PatientExportModal';
 import Dashboard from '@/components/Dashboard';
 import PatientInfoForm, { PatientInfo } from '@/components/PatientInfoForm';
 import CaseOptionsView from '@/components/CaseOptionsView';
-import { MatchedCondition, PatientCase } from '@/types';
+import PatientProfile from '@/components/PatientProfile';
+import { MatchedCondition, PatientCase, SelectedMedication, ClaimType } from '@/types';
 import type { PatientExportData } from '@/lib/patientExport';
 
-type WorkflowMode = 'new' | 'ongoing' | 'medication' | 'referral';
 type UserRole = 'assistant' | 'doctor';
 
-type AppView = 'landing' | 'onboarding' | 'assistant-home' | 'dashboard' | 'patient-info' | 'case-options' | 'workflow';
+type AppView = 'landing' | 'onboarding' | 'assistant-home' | 'dashboard' | 'patient-info' | 'patient-profile' | 'case-options' | 'workflow';
 
 const deduplicateMedications = (medications: any[]) => {
   return medications.reduce((acc: any[], current) => {
@@ -50,7 +47,7 @@ export default function Home() {
   const [isInitialized, setIsInitialized] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [matchedConditions, setMatchedConditions] = useState<MatchedCondition[]>([]);
-  const [currentWorkflow, setCurrentWorkflow] = useState<WorkflowMode>('new');
+  const [currentClaimType, setCurrentClaimType] = useState<ClaimType>('diagnostic');
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [patientName, setPatientName] = useState('');
   const [patientId, setPatientId] = useState('');
@@ -58,8 +55,6 @@ export default function Home() {
   const [patientPhone, setPatientPhone] = useState('');
   const [medicalAidNumber, setMedicalAidNumber] = useState('');
   const [isSaving, setIsSaving] = useState(false);
-  const [showCaseActions, setShowCaseActions] = useState(false);
-  const [showAllCases, setShowAllCases] = useState(false);
   const [showPatientExport, setShowPatientExport] = useState(false);
   
   const [practiceName, setPracticeName] = useState('');
@@ -70,11 +65,15 @@ export default function Home() {
   const [onboardingDoctorName, setOnboardingDoctorName] = useState('');
   const [onboardingAssistantName, setOnboardingAssistantName] = useState('');
   const [onboardingErrors, setOnboardingErrors] = useState<Partial<Record<'practiceName' | 'doctorName' | 'assistantName', string>>>({});
+  const [landingRole, setLandingRole] = useState<UserRole>('assistant');
 
-  // New dashboard workflow states
+  // View state
   const [currentView, setCurrentView] = useState<AppView>('landing');
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [currentCaseForView, setCurrentCaseForView] = useState<PatientCase | null>(null);
+  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  // Prefill data for "New Claim for this Patient"
+  const [patientInfoPrefill, setPatientInfoPrefill] = useState<Partial<PatientInfo> | undefined>(undefined);
 
   useEffect(() => {
     const init = async () => {
@@ -84,18 +83,41 @@ export default function Home() {
     init();
   }, []);
 
+  const isPracticeReady = Boolean(practiceName.trim());
+
   const handleStartOnboarding = () => {
+    setOnboardingPracticeName(practiceName);
+    setOnboardingDoctorName(doctorName);
+    setOnboardingAssistantName(assistantName);
     setCurrentView('onboarding');
+  };
+
+  const handleOpenAssistantWorkspace = () => {
+    if (!isPracticeReady) {
+      setCurrentView('onboarding');
+      return;
+    }
+    setLandingRole('assistant');
+    setUserRole('assistant');
+    setCurrentView('assistant-home');
+  };
+
+  const handleOpenDoctorWorkspace = () => {
+    if (!isPracticeReady) {
+      setCurrentView('onboarding');
+      return;
+    }
+    setLandingRole('doctor');
+    setUserRole('doctor');
+    setCurrentView('dashboard');
   };
 
   const handleSavePracticeInfo = (practice: { practiceName: string; doctorName: string; assistantName: string }) => {
     setPracticeName(practice.practiceName);
     setDoctorName(practice.doctorName);
     setAssistantName(practice.assistantName);
-    // After saving practice details, remain on the onboarding page so
-    // the user can explicitly choose Assistant or Doctor roles later.
     setUserRole(null);
-    setCurrentView('onboarding');
+    setCurrentView('landing');
   };
 
   const handleOnboardingSubmit = (e: FormEvent) => {
@@ -125,30 +147,27 @@ export default function Home() {
     });
   };
 
-  const handleLoginAsAssistant = () => {
-    if (!practiceName) {
-      setCurrentView('onboarding');
-      return;
-    }
-    setUserRole('assistant');
-    setCurrentView('assistant-home');
-  };
-
   const handleAssistantNewCase = () => {
+    setUserRole('assistant');
+    store.resetWorkflow();
+    setPatientName('');
+    setPatientId('');
+    setPatientEmail('');
+    setPatientPhone('');
+    setMedicalAidNumber('');
+    setMatchedConditions([]);
     setCurrentView('patient-info');
   };
 
   const handleAssistantViewRecords = () => {
+    setUserRole('assistant');
     setCurrentView('dashboard');
   };
 
-  const handleLoginAsDoctor = () => {
-    if (!practiceName) {
-      setCurrentView('onboarding');
-      return;
-    }
-    setUserRole('doctor');
-    setCurrentView('dashboard');
+  const handleBackToAssistantHome = () => {
+    setCurrentView('assistant-home');
+    setSelectedCaseId(null);
+    setCurrentCaseForView(null);
   };
 
   const handleLogout = () => {
@@ -166,6 +185,9 @@ export default function Home() {
 
   // Dashboard workflow handlers
   const handleNewCaseClick = () => {
+    if (userRole !== 'assistant') {
+      setUserRole('doctor');
+    }
     store.resetWorkflow();
     setPatientName('');
     setPatientId('');
@@ -177,15 +199,14 @@ export default function Home() {
   };
 
   const handlePatientInfoSubmit = (patientInfo: PatientInfo) => {
-    // Save patient info to state
     setPatientName(patientInfo.patientName);
     setPatientId(patientInfo.patientId);
     setPatientEmail(patientInfo.patientEmail);
     setPatientPhone(patientInfo.patientPhone);
     setMedicalAidNumber(patientInfo.medicalAidNumber);
     store.setSelectedPlan(patientInfo.plan);
+    setCurrentClaimType(patientInfo.claimType);
 
-    // Create a new case with status "new"
     const newCase: PatientCase = {
       id: Date.now().toString(),
       patientName: patientInfo.patientName,
@@ -193,6 +214,7 @@ export default function Home() {
       patientEmail: patientInfo.patientEmail,
       patientPhone: patientInfo.patientPhone,
       medicalAidNumber: patientInfo.medicalAidNumber,
+      claimType: patientInfo.claimType,
       createdAt: new Date(),
       updatedAt: new Date(),
       clinicalNote: '',
@@ -207,12 +229,12 @@ export default function Home() {
       status: 'new',
     };
 
-    // Add to store through a proper action so the dashboard updates correctly
     store.addCase(newCase);
     setSelectedCaseId(newCase.id);
+    setPatientInfoPrefill(undefined);
 
-    // Return to dashboard to show the newly created case
-    setCurrentView('dashboard');
+    // Route directly into the correct workflow
+    setCurrentView('workflow');
   };
 
   const handleViewCase = (caseId: string) => {
@@ -224,43 +246,51 @@ export default function Home() {
     }
   };
 
+  const handleViewPatientProfile = (patientId: string) => {
+    setSelectedPatientId(patientId);
+    setCurrentView('patient-profile');
+  };
+
   const handleStartClinicalNote = () => {
+    if (userRole === 'assistant') return;
     if (selectedCaseId && currentCaseForView) {
-      // Load the case into the workflow
       setPatientName(currentCaseForView.patientName);
       setPatientId(currentCaseForView.patientId);
       setPatientEmail(currentCaseForView.patientEmail || '');
       setPatientPhone(currentCaseForView.patientPhone || '');
       setMedicalAidNumber(currentCaseForView.medicalAidNumber || '');
+      setCurrentClaimType(currentCaseForView.claimType ?? 'diagnostic');
       
       store.loadCase(selectedCaseId);
       store.setCurrentStep(0);
-      setCurrentWorkflow('new');
       setCurrentView('workflow');
     }
   };
 
   const handleContinueWorkflow = () => {
+    if (userRole === 'assistant') return;
     if (selectedCaseId && currentCaseForView) {
-      // Load the case and continue from where it left off
       setPatientName(currentCaseForView.patientName);
       setPatientId(currentCaseForView.patientId);
       setPatientEmail(currentCaseForView.patientEmail || '');
       setPatientPhone(currentCaseForView.patientPhone || '');
       setMedicalAidNumber(currentCaseForView.medicalAidNumber || '');
+      setCurrentClaimType(currentCaseForView.claimType ?? 'diagnostic');
       
       store.loadCase(selectedCaseId);
       
-      // Determine which step to continue from
-      let startStep = 0;
-      if (currentCaseForView.clinicalNote) startStep = 1;
-      if (currentCaseForView.condition) startStep = 2;
-      if (currentCaseForView.diagnosticTreatments.length > 0) startStep = 3;
-      if (currentCaseForView.medications.length > 0) startStep = 4;
-      if (currentCaseForView.medicationNote) startStep = 5;
-      
-      store.setCurrentStep(startStep);
-      setCurrentWorkflow('new');
+      const claimType = currentCaseForView.claimType ?? 'diagnostic';
+      if (claimType === 'ongoing-management' || claimType === 'medication-report') {
+        store.setCurrentStep(0);
+      } else {
+        let startStep = 0;
+        if (currentCaseForView.clinicalNote) startStep = 1;
+        if (currentCaseForView.condition) startStep = 2;
+        if (currentCaseForView.diagnosticTreatments.length > 0) startStep = 3;
+        if (currentCaseForView.medications.length > 0) startStep = 4;
+        if (currentCaseForView.medicationNote) startStep = 5;
+        store.setCurrentStep(startStep);
+      }
       setCurrentView('workflow');
     }
   };
@@ -276,6 +306,118 @@ export default function Home() {
     setPatientPhone('');
     setMedicalAidNumber('');
     setMatchedConditions([]);
+  };
+
+  const handleBackToPatientProfile = () => {
+    setCurrentView('patient-profile');
+    setSelectedCaseId(null);
+    setCurrentCaseForView(null);
+  };
+
+  /**
+   * Called from PatientProfile when the doctor selects a case action type.
+   * Creates a new claim for the existing patient, pre-fills data from their latest case,
+   * and routes directly into the relevant workflow — no PatientInfoForm needed.
+   */
+  const handleNewCaseActionForPatient = (pid: string, claimType: ClaimType) => {
+    const patientCases = store.cases.filter((c) => c.patientId === pid);
+    if (patientCases.length === 0) return;
+
+    const latest = [...patientCases].sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    )[0];
+
+    store.resetWorkflow();
+    setMatchedConditions([]);
+    setCurrentClaimType(claimType);
+    setPatientName(latest.patientName);
+    setPatientId(latest.patientId);
+    setPatientEmail(latest.patientEmail || '');
+    setPatientPhone(latest.patientPhone || '');
+    setMedicalAidNumber(latest.medicalAidNumber || '');
+    store.setSelectedPlan(latest.plan);
+
+    // Pre-fill condition from the patient's most recent case that has one
+    const withCondition = patientCases
+      .filter((c) => c.condition)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
+
+    if (withCondition) {
+      store.setSelectedCondition(
+        withCondition.condition,
+        withCondition.icdCode,
+        withCondition.icdDescription
+      );
+    }
+
+    // For medication-report, pre-load current medications from latest case
+    if (claimType === 'medication-report' && latest.medications.length > 0) {
+      latest.medications.forEach((med) => store.addMedication(med));
+      store.setMedicationNote(latest.medicationNote || '');
+    }
+
+    const newCase: PatientCase = {
+      id: Date.now().toString(),
+      patientName: latest.patientName,
+      patientId: latest.patientId,
+      patientEmail: latest.patientEmail,
+      patientPhone: latest.patientPhone,
+      medicalAidNumber: latest.medicalAidNumber,
+      claimType,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      clinicalNote: '',
+      condition: withCondition?.condition || '',
+      icdCode: withCondition?.icdCode || '',
+      icdDescription: withCondition?.icdDescription || '',
+      diagnosticTreatments: [],
+      ongoingTreatments: [],
+      medications: claimType === 'medication-report' ? [...latest.medications] : [],
+      medicationNote: claimType === 'medication-report' ? (latest.medicationNote || '') : '',
+      plan: latest.plan,
+      status: 'new',
+    };
+
+    store.addCase(newCase);
+    setSelectedCaseId(newCase.id);
+    setCurrentView('workflow');
+  };
+
+  const handleCancelPatientInfo = () => {
+    if (userRole === 'assistant') {
+      handleBackToAssistantHome();
+    } else {
+      handleBackToDashboard();
+    }
+  };
+
+  const exportCaseDocuments = async (caseData: PatientCase, includeAttachments: boolean) => {
+    if (
+      caseData.status !== 'completed' &&
+      !(caseData.condition && caseData.icdCode)
+    ) {
+      alert('This case is not ready to export yet. Wait until the doctor has saved the patient case.');
+      return;
+    }
+
+    const pdfService = new PDFExportService();
+    if (includeAttachments) {
+      await pdfService.exportInitialClaimWithAttachments(caseData);
+    } else {
+      pdfService.exportInitialClaim(caseData);
+    }
+  };
+
+  const handleAssistantExportPdf = () => {
+    if (currentCaseForView) {
+      void exportCaseDocuments(currentCaseForView, false);
+    }
+  };
+
+  const handleAssistantExportZip = () => {
+    if (currentCaseForView) {
+      void exportCaseDocuments(currentCaseForView, true);
+    }
   };
 
   const handleAnalyze = async () => {
@@ -378,37 +520,19 @@ export default function Home() {
   };
 
   const handleExportPDF = () => {
-    if (!store.selectedCondition || !store.selectedIcdCode) {
+    const patientCase = buildCurrentCaseSnapshot();
+    if (!patientCase?.condition || !patientCase.icdCode) {
       alert('Please complete the workflow first');
       return;
     }
 
     const pdfService = new PDFExportService();
-    const patientCase = {
-      id: Date.now().toString(),
-      patientName: patientName || 'Patient',
-      patientId: patientId || 'N/A',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      clinicalNote: store.clinicalNote,
-      condition: store.selectedCondition,
-      icdCode: store.selectedIcdCode,
-      icdDescription: store.selectedIcdDescription || '',
-      diagnosticTreatments: store.diagnosticTreatments,
-      ongoingTreatments: store.ongoingTreatments,
-      medications: store.medications,
-      medicationNote: store.medicationNote,
-      plan: store.selectedPlan,
-      status: 'diagnostic' as const,
-    };
-
     pdfService.exportInitialClaim(patientCase);
   };
 
   const getPatientInfoForSave = () => {
-    const selectedCase = selectedCaseId
-      ? store.cases.find((c) => c.id === selectedCaseId)
-      : null;
+    const caseId = store.currentCaseId || selectedCaseId;
+    const selectedCase = caseId ? store.cases.find((c) => c.id === caseId) : null;
 
     return {
       patientName: patientName || selectedCase?.patientName || '',
@@ -419,32 +543,65 @@ export default function Home() {
     };
   };
 
+  /** Merges live workflow state with the saved case for claim PDF/export and final summary */
+  const buildCurrentCaseSnapshot = (): PatientCase | null => {
+    const caseId = store.currentCaseId || selectedCaseId;
+    if (!caseId) return null;
+
+    const base = store.cases.find((c) => c.id === caseId);
+    const patientData = getPatientInfoForSave();
+
+    const status =
+      store.ongoingTreatments.length > 0
+        ? 'ongoing'
+        : store.diagnosticTreatments.length > 0
+        ? 'diagnostic'
+        : base?.status ?? 'draft';
+
+    return {
+      id: caseId,
+      patientName: patientData.patientName || base?.patientName || 'Patient',
+      patientId: patientData.patientId || base?.patientId || 'N/A',
+      patientEmail: patientData.patientEmail || base?.patientEmail,
+      patientPhone: patientData.patientPhone || base?.patientPhone,
+      medicalAidNumber: patientData.medicalAidNumber || base?.medicalAidNumber,
+      claimType: base?.claimType ?? currentClaimType,
+      createdAt: base?.createdAt ?? new Date(),
+      updatedAt: new Date(),
+      clinicalNote: store.clinicalNote || base?.clinicalNote || '',
+      condition: store.selectedCondition || base?.condition || '',
+      icdCode: store.selectedIcdCode || base?.icdCode || '',
+      icdDescription: store.selectedIcdDescription || base?.icdDescription || '',
+      diagnosticTreatments: store.diagnosticTreatments,
+      ongoingTreatments: store.ongoingTreatments,
+      medications: store.medications,
+      medicationNote: store.medicationNote || base?.medicationNote || '',
+      plan: store.selectedPlan || base?.plan || 'Core',
+      status: status as PatientCase['status'],
+      medicationReports:
+        store.cases.find((c) => c.id === caseId)?.medicationReports ?? base?.medicationReports,
+      referrals: base?.referrals,
+    };
+  };
+
+  const refreshCurrentCaseView = () => {
+    const caseId = store.currentCaseId || selectedCaseId;
+    if (!caseId) return;
+    const updated = store.cases.find((c) => c.id === caseId);
+    if (updated) {
+      setCurrentCaseForView(updated);
+      setSelectedCaseId(caseId);
+    }
+  };
+
   const handleExportWithAttachments = async () => {
-    if (!store.selectedCondition || !store.selectedIcdCode) {
+    const patientCase = buildCurrentCaseSnapshot();
+    if (!patientCase?.condition || !patientCase.icdCode) {
       alert('Please complete the workflow first');
       return;
     }
 
-    const patientData = getPatientInfoForSave();
     const pdfService = new PDFExportService();
-    const patientCase = {
-      id: Date.now().toString(),
-      patientName: patientData.patientName || 'Patient',
-      patientId: patientData.patientId || 'N/A',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      clinicalNote: store.clinicalNote,
-      condition: store.selectedCondition,
-      icdCode: store.selectedIcdCode,
-      icdDescription: store.selectedIcdDescription || '',
-      diagnosticTreatments: store.diagnosticTreatments,
-      ongoingTreatments: store.ongoingTreatments,
-      medications: store.medications,
-      medicationNote: store.medicationNote,
-      plan: store.selectedPlan,
-      status: 'diagnostic' as const,
-    };
-
     await pdfService.exportInitialClaimWithAttachments(patientCase);
   };
 
@@ -475,73 +632,54 @@ export default function Home() {
         isFinalSave: true,
       });
 
+      const caseUpdates = {
+        patientName,
+        patientId,
+        patientEmail,
+        patientPhone,
+        medicalAidNumber,
+        clinicalNote: store.clinicalNote,
+        condition: store.selectedCondition || '',
+        icdCode: store.selectedIcdCode || '',
+        icdDescription: store.selectedIcdDescription || '',
+        diagnosticTreatments: store.diagnosticTreatments,
+        ongoingTreatments: store.ongoingTreatments,
+        medications: store.medications,
+        medicationNote: store.medicationNote,
+        plan: store.selectedPlan,
+        status: 'completed' as const,
+        updatedAt: new Date(),
+      };
+
       if (!result.success) {
-        // Remote save failed (network or server). Fall back to local save so user doesn't lose work.
         if (selectedCaseId) {
-          store.updateCase(selectedCaseId, {
-            patientName,
-            patientId,
-            patientEmail,
-            patientPhone,
-            medicalAidNumber,
-            clinicalNote: store.clinicalNote,
-            condition: store.selectedCondition || '',
-            icdCode: store.selectedIcdCode || '',
-            icdDescription: store.selectedIcdDescription || '',
-            diagnosticTreatments: store.diagnosticTreatments,
-            ongoingTreatments: store.ongoingTreatments,
-            medications: store.medications,
-            medicationNote: store.medicationNote,
-            plan: store.selectedPlan,
-            status: 'completed',
-            updatedAt: new Date(),
-          });
+          store.updateCase(selectedCaseId, caseUpdates);
         } else {
-          store.saveCase(patientName, patientId);
+          store.saveCase(patientName, patientId, currentClaimType);
           if (store.currentCaseId) {
             setSelectedCaseId(store.currentCaseId);
-            store.updateCase(store.currentCaseId, {
-              status: 'completed',
-            });
+            store.updateCase(store.currentCaseId, { status: 'completed' });
           }
         }
 
         setShowSaveModal(false);
-        setShowCaseActions(true);
+        store.resetWorkflow();
+        setCurrentView('dashboard');
         alert(`Saved locally. Remote save failed: ${result.error || 'Unknown error'}`);
       } else {
-        // Remote save succeeded. Update or create local case accordingly.
         if (selectedCaseId) {
-          store.updateCase(selectedCaseId, {
-            patientName,
-            patientId,
-            patientEmail,
-            patientPhone,
-            medicalAidNumber,
-            clinicalNote: store.clinicalNote,
-            condition: store.selectedCondition || '',
-            icdCode: store.selectedIcdCode || '',
-            icdDescription: store.selectedIcdDescription || '',
-            diagnosticTreatments: store.diagnosticTreatments,
-            ongoingTreatments: store.ongoingTreatments,
-            medications: store.medications,
-            medicationNote: store.medicationNote,
-            plan: store.selectedPlan,
-            status: 'completed',
-            updatedAt: new Date(),
-          });
+          store.updateCase(selectedCaseId, caseUpdates);
         } else {
-          store.saveCase(patientName, patientId);
+          store.saveCase(patientName, patientId, currentClaimType);
           if (store.currentCaseId) {
             setSelectedCaseId(store.currentCaseId);
-            store.updateCase(store.currentCaseId, {
-              status: 'completed',
-            });
+            store.updateCase(store.currentCaseId, { status: 'completed' });
           }
         }
 
         setShowSaveModal(false);
-        setShowCaseActions(true);
+        store.resetWorkflow();
+        setCurrentView('dashboard');
         alert('Case saved successfully!');
       }
     } catch (error) {
@@ -574,39 +712,36 @@ export default function Home() {
         medications: store.medications,
         medicationNote: store.medicationNote,
         plan: store.selectedPlan,
-        status: store.ongoingTreatments.length > 0
-          ? 'ongoing'
-          : store.diagnosticTreatments.length > 0
-          ? 'diagnostic'
-          : 'draft',
+        status: 'completed',
         updatedAt: new Date(),
       });
     } else {
-      store.saveCase(patientData.patientName, patientData.patientId);
+      store.saveCase(patientData.patientName, patientData.patientId, currentClaimType);
       if (store.currentCaseId) {
         setSelectedCaseId(store.currentCaseId);
       }
     }
 
     setShowSaveModal(false);
-    setShowCaseActions(true);
 
     if (includeAttachments) {
       await handleExportWithAttachments();
     } else {
       handleExportPDF();
     }
+
+    store.resetWorkflow();
+    setCurrentView('dashboard');
     alert('Case saved and exported successfully!');
   };
 
   const handleLoadCase = (caseId: string) => {
     store.loadCase(caseId);
-    setCurrentWorkflow('new');
-    setShowCaseActions(true);
     const loadedCase = store.cases.find(c => c.id === caseId);
     if (loadedCase) {
       setPatientName(loadedCase.patientName);
       setPatientId(loadedCase.patientId);
+      setCurrentClaimType(loadedCase.claimType ?? 'diagnostic');
       store.setCurrentStep(5);
     }
   };
@@ -614,11 +749,13 @@ export default function Home() {
   const handleOngoingManagementSaveOnly = () => {
     if (store.currentCaseId) {
       store.updateCase(store.currentCaseId, {
-        ongoingTreatments: store.ongoingTreatments,
-        status: 'ongoing',
+        ongoingTreatments: [...store.ongoingTreatments],
+        status: 'completed',
       });
     }
-    alert('Ongoing management treatments saved successfully!');
+    store.resetWorkflow();
+    setCurrentView('dashboard');
+    alert('Ongoing management saved.');
     setCurrentWorkflow('new');
   };
 
@@ -635,166 +772,137 @@ export default function Home() {
 
   const handleOngoingManagementSavePdfOnly = () => {
     if (store.currentCaseId) {
-      const currentCase = store.cases.find(c => c.id === store.currentCaseId);
-      if (currentCase) {
-        const updatedCase = {
-          ...currentCase,
-          ongoingTreatments: store.ongoingTreatments,
-          status: 'ongoing' as const,
-          updatedAt: new Date(),
-        };
-
-        store.updateCase(store.currentCaseId, {
-          ongoingTreatments: store.ongoingTreatments,
-          status: 'ongoing',
-        });
-
+      store.updateCase(store.currentCaseId, {
+        ongoingTreatments: [...store.ongoingTreatments],
+        status: 'completed',
+      });
+      const snapshot = buildCurrentCaseSnapshot();
+      if (snapshot) {
         const pdfService = new PDFExportService();
-        pdfService.exportOngoingManagement(updatedCase);
+        pdfService.exportInitialClaim(snapshot);
       }
     }
-    alert('Ongoing management saved and PDF exported!');
-    setCurrentWorkflow('new');
+    store.resetWorkflow();
+    setCurrentView('dashboard');
+    alert('Ongoing management saved and claim PDF exported!');
   };
 
   const handleOngoingManagementSaveWithAttachments = async () => {
     if (store.currentCaseId) {
-      const currentCase = store.cases.find(c => c.id === store.currentCaseId);
-      if (currentCase) {
-        const updatedCase = {
-          ...currentCase,
-          ongoingTreatments: store.ongoingTreatments,
-          status: 'ongoing' as const,
-          updatedAt: new Date(),
-        };
-
-        store.updateCase(store.currentCaseId, {
-          ongoingTreatments: store.ongoingTreatments,
-          status: 'ongoing',
-        });
-
+      store.updateCase(store.currentCaseId, {
+        ongoingTreatments: [...store.ongoingTreatments],
+        status: 'completed',
+      });
+      const snapshot = buildCurrentCaseSnapshot();
+      if (snapshot) {
         const pdfService = new PDFExportService();
-        await pdfService.exportOngoingManagementWithAttachments(updatedCase);
+        await pdfService.exportInitialClaimWithAttachments(snapshot);
       }
     }
-    alert('Ongoing management saved and exported with attachments!');
-    setCurrentWorkflow('new');
+    store.resetWorkflow();
+    setCurrentView('dashboard');
+    alert('Ongoing management saved and full claim exported with attachments!');
   };
 
-  const handleMedicationReportSavePdfOnly = (followUpNotes: string, newMeds?: any[], motivationLetter?: string, documentation?: { notes: string; images: string[] }) => {
-    if (store.currentCaseId) {
-      const currentCase = store.cases.find(c => c.id === store.currentCaseId);
-      if (currentCase) {
-        const combinedMedications = newMeds && newMeds.length > 0
-          ? deduplicateMedications([...currentCase.medications, ...newMeds])
-          : currentCase.medications;
+  const persistMedicationReportChanges = (
+    followUpNotes: string,
+    newMeds?: SelectedMedication[],
+    motivationLetter?: string,
+    documentation?: { notes: string; images: string[] }
+  ) => {
+    if (!store.currentCaseId) return;
 
-        const newMedicationReport = {
-          id: Date.now().toString(),
-          caseId: store.currentCaseId,
-          originalMedications: currentCase.medications,
-          followUpNotes,
-          newMedications: newMeds || [],
-          motivationLetter: motivationLetter || '',
-          documentation,
-          createdAt: new Date(),
-        };
+    const currentCase = store.cases.find((c) => c.id === store.currentCaseId);
+    if (!currentCase) return;
 
-        const updatedCase = {
-          ...currentCase,
-          medicationReports: [...(currentCase.medicationReports || []), newMedicationReport],
-          medications: combinedMedications,
-          updatedAt: new Date(),
-        };
+    const combinedMedications =
+      newMeds && newMeds.length > 0
+        ? deduplicateMedications([...currentCase.medications, ...newMeds])
+        : currentCase.medications;
 
-        store.addMedicationReport(store.currentCaseId, {
-          caseId: store.currentCaseId,
-          originalMedications: currentCase.medications,
-          followUpNotes,
-          newMedications: newMeds || [],
-          motivationLetter: motivationLetter || '',
-          documentation,
-        });
+    store.addMedicationReport(store.currentCaseId, {
+      caseId: store.currentCaseId,
+      originalMedications: currentCase.medications,
+      followUpNotes,
+      newMedications: newMeds || [],
+      motivationLetter: motivationLetter || '',
+      documentation,
+    });
 
-        if (newMeds && newMeds.length > 0) {
-          store.updateCase(store.currentCaseId, {
-            medications: combinedMedications,
-          });
-        }
-
-        const pdfService = new PDFExportService();
-        pdfService.exportMedicationReport(updatedCase, followUpNotes, newMeds, motivationLetter);
-      }
-    }
-    alert('Medication report saved and PDF exported!');
-    setCurrentWorkflow('new');
+    store.updateCase(store.currentCaseId, {
+      medications: combinedMedications,
+    });
   };
 
-  const handleMedicationReportSaveWithAttachments = async (followUpNotes: string, newMeds?: any[], motivationLetter?: string, documentation?: { notes: string; images: string [] }) => {
+  const handleMedicationReportSaveOnly = (
+    followUpNotes: string,
+    newMeds?: SelectedMedication[],
+    motivationLetter?: string,
+    documentation?: { notes: string; images: string[] }
+  ) => {
+    persistMedicationReportChanges(followUpNotes, newMeds, motivationLetter, documentation);
     if (store.currentCaseId) {
-      const currentCase = store.cases.find(c => c.id === store.currentCaseId);
-      if (currentCase) {
-        const combinedMedications = newMeds && newMeds.length > 0
-          ? deduplicateMedications([...currentCase.medications, ...newMeds])
-          : currentCase.medications;
-
-        const newMedicationReport = {
-          id: Date.now().toString(),
-          caseId: store.currentCaseId,
-          originalMedications: currentCase.medications,
-          followUpNotes,
-          newMedications: newMeds || [],
-          motivationLetter: motivationLetter || '',
-          documentation,
-          createdAt: new Date(),
-        };
-
-        const updatedCase = {
-          ...currentCase,
-          medicationReports: [...(currentCase.medicationReports || []), newMedicationReport],
-          medications: combinedMedications,
-          updatedAt: new Date(),
-        };
-
-        store.addMedicationReport(store.currentCaseId, {
-          caseId: store.currentCaseId,
-          originalMedications: currentCase.medications,
-          followUpNotes,
-          newMedications: newMeds || [],
-          motivationLetter: motivationLetter || '',
-          documentation,
-        });
-
-        if (newMeds && newMeds.length > 0) {
-          store.updateCase(store.currentCaseId, {
-            medications: combinedMedications,
-          });
-        }
-
-        const pdfService = new PDFExportService();
-        await pdfService.exportMedicationReportWithAttachments(updatedCase, followUpNotes, newMeds, motivationLetter, documentation);
-      }
+      store.updateCase(store.currentCaseId, { status: 'completed' });
     }
-    alert('Medication report saved and exported with attachments!');
-    setCurrentWorkflow('new');
+    store.resetWorkflow();
+    setCurrentView('dashboard');
+    alert('Medication report saved.');
+  };
+
+  const handleMedicationReportSavePdfOnly = (
+    followUpNotes: string,
+    newMeds?: SelectedMedication[],
+    motivationLetter?: string,
+    documentation?: { notes: string; images: string[] }
+  ) => {
+    persistMedicationReportChanges(followUpNotes, newMeds, motivationLetter, documentation);
+    if (store.currentCaseId) {
+      store.updateCase(store.currentCaseId, { status: 'completed' });
+    }
+    const snapshot = buildCurrentCaseSnapshot();
+    if (snapshot) {
+      const pdfService = new PDFExportService();
+      pdfService.exportInitialClaim(snapshot);
+    }
+    store.resetWorkflow();
+    setCurrentView('dashboard');
+    alert('Medication report saved and claim PDF exported!');
+  };
+
+  const handleMedicationReportSaveWithAttachments = async (
+    followUpNotes: string,
+    newMeds?: SelectedMedication[],
+    motivationLetter?: string,
+    documentation?: { notes: string; images: string[] }
+  ) => {
+    persistMedicationReportChanges(followUpNotes, newMeds, motivationLetter, documentation);
+    if (store.currentCaseId) {
+      store.updateCase(store.currentCaseId, { status: 'completed' });
+    }
+    const snapshot = buildCurrentCaseSnapshot();
+    if (snapshot) {
+      const pdfService = new PDFExportService();
+      await pdfService.exportInitialClaimWithAttachments(snapshot);
+    }
+    store.resetWorkflow();
+    setCurrentView('dashboard');
+    alert('Medication report saved and full claim exported with attachments!');
   };
 
   const handleReferralSavePdfOnly = (urgency: 'routine' | 'urgent' | 'emergency', referralNote: string, specialistType: string) => {
     if (store.currentCaseId) {
       const currentCase = store.cases.find(c => c.id === store.currentCaseId);
       if (currentCase) {
-        const newReferral = {
-          id: Date.now().toString(),
-          caseId: store.currentCaseId,
-          urgency,
-          referralNote,
-          specialistType,
-          createdAt: new Date(),
-        };
-
         const updatedCase = {
           ...currentCase,
-          referrals: [...(currentCase.referrals || []), newReferral],
+          referrals: [...(currentCase.referrals || []), {
+            id: Date.now().toString(),
+            caseId: store.currentCaseId,
+            urgency,
+            referralNote,
+            specialistType,
+            createdAt: new Date(),
+          }],
           updatedAt: new Date(),
         };
 
@@ -810,25 +918,22 @@ export default function Home() {
       }
     }
     alert('Referral saved and PDF exported!');
-    setCurrentWorkflow('new');
   };
 
   const handleReferralSaveWithAttachments = async (urgency: 'routine' | 'urgent' | 'emergency', referralNote: string, specialistType: string) => {
     if (store.currentCaseId) {
       const currentCase = store.cases.find(c => c.id === store.currentCaseId);
       if (currentCase) {
-        const newReferral = {
-          id: Date.now().toString(),
-          caseId: store.currentCaseId,
-          urgency,
-          referralNote,
-          specialistType,
-          createdAt: new Date(),
-        };
-
         const updatedCase = {
           ...currentCase,
-          referrals: [...(currentCase.referrals || []), newReferral],
+          referrals: [...(currentCase.referrals || []), {
+            id: Date.now().toString(),
+            caseId: store.currentCaseId,
+            urgency,
+            referralNote,
+            specialistType,
+            createdAt: new Date(),
+          }],
           updatedAt: new Date(),
         };
 
@@ -844,16 +949,6 @@ export default function Home() {
       }
     }
     alert('Referral saved and exported with attachments!');
-    setCurrentWorkflow('new');
-  };
-
-  const handleNewClaim = () => {
-    store.resetWorkflow();
-    setPatientName('');
-    setPatientId('');
-    setMatchedConditions([]);
-    setCurrentWorkflow('new');
-    setShowCaseActions(false);
   };
 
   const handleSendToPatient = () => {
@@ -928,33 +1023,51 @@ export default function Home() {
               <div className="space-y-5">
                 <div className="rounded-3xl bg-slate-800 p-5 border border-white/10">
                   <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Practice</p>
-                  <p className="mt-3 text-lg font-semibold text-white">
-                    {practiceName || 'Dr. Johnson’s practice'}
+                  <p className={`mt-3 ${practiceName ? 'text-lg font-semibold text-white' : 'text-sm text-slate-500'}`}>
+                    {practiceName || '—'}
                   </p>
                   <p className="mt-2 text-sm text-slate-400">
-                    Set up your clinic, invite your assistant, and start patient intake.
+                    {isPracticeReady
+                      ? 'Switch roles in the sidebar, then open the matching workspace on the right.'
+                      : 'Set up your clinic, invite your assistant, and start patient intake.'}
                   </p>
                 </div>
 
-                <div className="rounded-3xl bg-slate-800 p-5 border border-white/10">
-                  <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Roles</p>
-                  <div className="mt-4 space-y-3">
-                    <button
-                      onClick={handleLoginAsAssistant}
-                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-left text-sm font-semibold text-white hover:border-blue-400 transition"
-                    >
-                      Assistant login
-                      <span className="block text-xs text-slate-500 mt-1">Choose between creating a new patient case or viewing existing records.</span>
-                    </button>
-                    <button
-                      onClick={handleLoginAsDoctor}
-                      className="w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-left text-sm font-semibold text-white hover:border-violet-400 transition"
-                    >
-                      Doctor login
-                      <span className="block text-xs text-slate-500 mt-1">Review cases, complete claim workflow, and sign off.</span>
-                    </button>
+                {isPracticeReady && (
+                  <div className="rounded-3xl bg-slate-800 p-5 border border-white/10">
+                    <p className="text-xs uppercase tracking-[0.24em] text-slate-400">Roles</p>
+                    <div className="mt-4 space-y-3">
+                      <button
+                        type="button"
+                        onClick={() => setLandingRole('assistant')}
+                        className={`w-full rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${
+                          landingRole === 'assistant'
+                            ? 'border-blue-400 bg-slate-950 text-white'
+                            : 'border-slate-700 bg-slate-950 text-white hover:border-blue-400'
+                        }`}
+                      >
+                        Assistant
+                        <span className="block text-xs text-slate-500 mt-1 font-normal">
+                          {assistantName || 'Create patient intake and download claim documents.'}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLandingRole('doctor')}
+                        className={`w-full rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${
+                          landingRole === 'doctor'
+                            ? 'border-violet-400 bg-slate-950 text-white'
+                            : 'border-slate-700 bg-slate-950 text-white hover:border-violet-400'
+                        }`}
+                      >
+                        Doctor
+                        <span className="block text-xs text-slate-500 mt-1 font-normal">
+                          {doctorName || 'Review cases and complete the claim workflow.'}
+                        </span>
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <button
                   onClick={handleStartOnboarding}
@@ -967,24 +1080,93 @@ export default function Home() {
 
             <main className="rounded-[32px] bg-white p-10 shadow-2xl">
               <div className="max-w-3xl">
-                <p className="text-sm font-semibold uppercase tracking-[0.3em] text-indigo-600">Welcome</p>
-                <h2 className="mt-4 text-4xl font-semibold text-slate-950">Your practice onboarding and claim workflow, built for teams.</h2>
-                <p className="mt-6 text-lg leading-8 text-slate-600">
-                  Begin by registering your practice. The assistant can capture patient intake first, then the doctor can return to complete the claim workflow and save the case.
-                </p>
+                {isPracticeReady ? (
+                  <>
+                    <p className="text-sm font-semibold uppercase tracking-[0.3em] text-indigo-600">Welcome back</p>
+                    <h2 className="mt-4 text-4xl font-semibold text-slate-950">Choose how you want to work today</h2>
+                    <p className="mt-6 text-lg leading-8 text-slate-600">
+                      Switch between assistant and doctor roles for {practiceName}. Open the workspace for the role you need.
+                    </p>
 
-                <div className="mt-10 grid gap-6 sm:grid-cols-2">
-                  <div className="rounded-3xl border border-slate-200 p-6">
-                    <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Start here</p>
-                    <h3 className="mt-3 text-xl font-semibold text-slate-900">Assistant intake</h3>
-                    <p className="mt-2 text-sm text-slate-600">Create patient records, add medical history, and begin new cases.</p>
-                  </div>
-                  <div className="rounded-3xl border border-slate-200 p-6">
-                    <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Next</p>
-                    <h3 className="mt-3 text-xl font-semibold text-slate-900">Doctor workflow</h3>
-                    <p className="mt-2 text-sm text-slate-600">Review cases, select conditions, match ICD codes, and finalize claims.</p>
-                  </div>
-                </div>
+                    <div className="mt-8 inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
+                      <button
+                        type="button"
+                        onClick={() => setLandingRole('assistant')}
+                        className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
+                          landingRole === 'assistant'
+                            ? 'bg-white text-slate-950 shadow-sm'
+                            : 'text-slate-600 hover:text-slate-950'
+                        }`}
+                      >
+                        Assistant{assistantName ? ` · ${assistantName}` : ''}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setLandingRole('doctor')}
+                        className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
+                          landingRole === 'doctor'
+                            ? 'bg-white text-slate-950 shadow-sm'
+                            : 'text-slate-600 hover:text-slate-950'
+                        }`}
+                      >
+                        Doctor{doctorName ? ` · ${doctorName}` : ''}
+                      </button>
+                    </div>
+
+                    {landingRole === 'assistant' ? (
+                      <div className="mt-8 rounded-3xl border border-blue-200 bg-blue-50/50 p-6">
+                        <p className="text-sm uppercase tracking-[0.24em] text-blue-600">Assistant role</p>
+                        <h3 className="mt-3 text-xl font-semibold text-slate-900">Patient intake and records</h3>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">
+                          Create new patient cases and browse saved records. Download claim PDFs or ZIP exports once the doctor has finalized a case.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleOpenAssistantWorkspace}
+                          className="mt-6 rounded-2xl bg-primary-400 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-primary-500 transition"
+                        >
+                          Open assistant workspace
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-8 rounded-3xl border border-violet-200 bg-violet-50/50 p-6">
+                        <p className="text-sm uppercase tracking-[0.24em] text-violet-600">Doctor role</p>
+                        <h3 className="mt-3 text-xl font-semibold text-slate-900">Claim workflow and sign-off</h3>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">
+                          Review cases, select conditions, match ICD codes, and finalize claims for your patients.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleOpenDoctorWorkspace}
+                          className="mt-6 rounded-2xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white hover:bg-violet-700 transition"
+                        >
+                          Open doctor workspace
+                        </button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-semibold uppercase tracking-[0.3em] text-indigo-600">Welcome</p>
+                    <h2 className="mt-4 text-4xl font-semibold text-slate-950">Your practice onboarding and claim workflow, built for teams.</h2>
+                    <p className="mt-6 text-lg leading-8 text-slate-600">
+                      Begin by registering your practice. Once onboarding is complete, you can switch between assistant and doctor roles from this page.
+                    </p>
+
+                    <div className="mt-10 grid gap-6 sm:grid-cols-2">
+                      <div className="rounded-3xl border border-slate-200 p-6">
+                        <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Start here</p>
+                        <h3 className="mt-3 text-xl font-semibold text-slate-900">Assistant intake</h3>
+                        <p className="mt-2 text-sm text-slate-600">Create patient records, add medical history, and begin new cases.</p>
+                      </div>
+                      <div className="rounded-3xl border border-slate-200 p-6">
+                        <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Next</p>
+                        <h3 className="mt-3 text-xl font-semibold text-slate-900">Doctor workflow</h3>
+                        <p className="mt-2 text-sm text-slate-600">Review cases, select conditions, match ICD codes, and finalize claims.</p>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
             </main>
           </div>
@@ -1015,24 +1197,26 @@ export default function Home() {
 
           <div className="grid gap-6 md:grid-cols-2">
             <button
+              type="button"
               onClick={handleAssistantNewCase}
               className="rounded-[28px] border border-white/10 bg-slate-900 p-10 text-left transition hover:border-blue-400"
             >
               <p className="text-sm uppercase tracking-[0.3em] text-indigo-400">New patient case</p>
               <h2 className="mt-4 text-3xl font-semibold text-white">Create a new patient intake</h2>
               <p className="mt-3 text-sm leading-6 text-slate-400">
-                Add a new patient record, capture clinical history, and start a case for the doctor to finalize.
+                Add patient details and start a case. The doctor completes the clinical workflow and finalizes the claim.
               </p>
             </button>
 
             <button
+              type="button"
               onClick={handleAssistantViewRecords}
               className="rounded-[28px] border border-white/10 bg-slate-900 p-10 text-left transition hover:border-violet-400"
             >
-              <p className="text-sm uppercase tracking-[0.3em] text-violet-400">View patient records</p>
-              <h2 className="mt-4 text-3xl font-semibold text-white">Browse existing cases</h2>
+              <p className="text-sm uppercase tracking-[0.3em] text-violet-400">Patient records</p>
+              <h2 className="mt-4 text-3xl font-semibold text-white">View and download cases</h2>
               <p className="mt-3 text-sm leading-6 text-slate-400">
-                Review previously created patient cases and download PDFs for existing records.
+                Browse existing cases. Export claim PDFs or download documents with attachments (ZIP) when ready.
               </p>
             </button>
           </div>
@@ -1067,7 +1251,7 @@ export default function Home() {
                   value={onboardingPracticeName}
                   onChange={(e) => setOnboardingPracticeName(e.target.value)}
                   className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white focus:border-primary-400 focus:outline-none"
-                  placeholder="e.g. Dr. Johnson’s Practice"
+                  placeholder="Enter your practice name"
                 />
                 {onboardingErrors.practiceName && <p className="mt-2 text-sm text-rose-400">{onboardingErrors.practiceName}</p>}
               </div>
@@ -1078,7 +1262,7 @@ export default function Home() {
                   value={onboardingDoctorName}
                   onChange={(e) => setOnboardingDoctorName(e.target.value)}
                   className="mt-2 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-white focus:border-primary-400 focus:outline-none"
-                  placeholder="e.g. Dr. Johnson"
+                  placeholder="Enter doctor name"
                 />
                 {onboardingErrors.doctorName && <p className="mt-2 text-sm text-rose-400">{onboardingErrors.doctorName}</p>}
               </div>
@@ -1102,22 +1286,6 @@ export default function Home() {
               </button>
             </div>
           </form>
-
-          <div className="mt-6 flex gap-3">
-            <button
-              onClick={handleLoginAsAssistant}
-              className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:border-blue-400 transition"
-            >
-              Assistant login
-            </button>
-
-            <button
-              onClick={handleLoginAsDoctor}
-              className="rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:border-violet-400 transition"
-            >
-              Doctor login
-            </button>
-          </div>
         </div>
       </div>
     );
@@ -1126,16 +1294,16 @@ export default function Home() {
   // Dashboard view
   if (currentView === 'dashboard') {
     return (
-      <div>
-        <Dashboard
-          cases={store.cases}
-          onNewCase={handleNewCaseClick}
-          onViewCase={handleViewCase}
-          practiceName={practiceName}
-          userRole={userRole}
-          onLogout={handleLogout}
-        />
-      </div>
+      <Dashboard
+        cases={store.cases}
+        onNewCase={handleNewCaseClick}
+        onViewCase={handleViewCase}
+        onViewPatientProfile={handleViewPatientProfile}
+        canCreateCase={userRole === 'doctor' || userRole === 'assistant'}
+        practiceName={practiceName}
+        userRole={userRole}
+        onLogout={userRole === 'assistant' ? handleBackToAssistantHome : handleLogout}
+      />
     );
   }
 
@@ -1144,36 +1312,71 @@ export default function Home() {
     return (
       <PatientInfoForm
         onSave={handlePatientInfoSubmit}
-        onCancel={handleBackToDashboard}
+        onCancel={handleCancelPatientInfo}
+        prefillData={patientInfoPrefill}
+      />
+    );
+  }
+
+  // Patient profile view
+  if (currentView === 'patient-profile' && selectedPatientId) {
+    const patientCases = store.cases.filter((c) => c.patientId === selectedPatientId);
+    return (
+      <PatientProfile
+        patientId={selectedPatientId}
+        cases={patientCases}
+        onViewClaim={handleViewCase}
+        onNewCaseAction={handleNewCaseActionForPatient}
+        onBack={handleBackToDashboard}
+        userRole={userRole}
       />
     );
   }
 
   // Case options view
   if (currentView === 'case-options' && currentCaseForView) {
+    const cameFromProfile = selectedPatientId !== null;
     return (
       <CaseOptionsView
         caseData={currentCaseForView}
         onStartClinicalNote={handleStartClinicalNote}
         onContinueWorkflow={handleContinueWorkflow}
-        onClose={handleBackToDashboard}
+        onClose={cameFromProfile ? handleBackToPatientProfile : handleBackToDashboard}
+        readOnly={userRole === 'assistant'}
+        onExportPdf={handleAssistantExportPdf}
+        onExportZip={handleAssistantExportZip}
       />
     );
   }
 
-  // Workflow view (original workflow)
+  // Workflow view (doctor only — assistants use case view + exports)
+  if (currentView === 'workflow' && userRole === 'assistant') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
+        <div className="max-w-md rounded-xl bg-white border border-gray-200 p-8 text-center shadow-sm">
+          <p className="text-gray-700">The clinical workflow is only available to the doctor role.</p>
+          <button
+            type="button"
+            onClick={handleBackToDashboard}
+            className="mt-6 btn-primary w-full"
+          >
+            Back to patient records
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (currentView === 'workflow') {
+    const claimTypeLabel: Record<ClaimType, string> = {
+      'diagnostic': 'Diagnostic Claim',
+      'ongoing-management': 'Ongoing Management',
+      'medication-report': 'Medication Report',
+      'referral': 'Referral',
+    };
+
     return (
       <div className="min-h-screen bg-primary-50">
-        {showAllCases && (
-          <AllCasesView
-            cases={store.cases}
-            onLoadCase={handleLoadCase}
-            onDeleteCase={store.deleteCase}
-            onClose={() => setShowAllCases(false)}
-          />
-        )}
-
         {/* Header */}
         <header className="bg-white border-b border-primary-200 sticky top-0 z-30">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1186,35 +1389,17 @@ export default function Home() {
                   <ArrowLeft className="w-6 h-6" />
                 </button>
                 <div>
-                  <p className="text-xl font-bold text-gray-800 tracking-tight">Clinical Workflow</p>
+                  <p className="text-xl font-bold text-gray-800 tracking-tight">{claimTypeLabel[currentClaimType]}</p>
                   <p className="text-sm text-gray-600">{patientName} ({patientId})</p>
                 </div>
-              </div>
-              
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={store.toggleSidebar}
-                  className="p-2 hover:bg-gray-100 rounded-lg"
-                >
-                  <Menu className="w-6 h-6" />
-                </button>
               </div>
             </div>
           </div>
         </header>
 
-        <Sidebar
-          isOpen={store.sidebarOpen}
-          onClose={store.toggleSidebar}
-          cases={store.cases}
-          onLoadCase={handleLoadCase}
-          onDeleteCase={store.deleteCase}
-          onViewAll={() => setShowAllCases(true)}
-        />
-
         {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {currentWorkflow === 'new' && (
+        {currentClaimType === 'diagnostic' && (
           <>
             {/* Progress Steps */}
             <div className="mb-8 bg-white rounded-xl shadow-sm border border-primary-200 p-6">
@@ -1337,32 +1522,23 @@ export default function Home() {
               )}
 
               {store.currentStep === 5 && (
-                <>
-                  <FinalClaimSummary
-                    clinicalNote={store.clinicalNote}
-                    selectedCondition={store.selectedCondition!}
-                    selectedIcdCode={store.selectedIcdCode!}
-                    selectedIcdDescription={store.selectedIcdDescription!}
-                    diagnosticTreatments={store.diagnosticTreatments}
-                    ongoingTreatments={store.ongoingTreatments}
-                    medications={store.medications}
-                    medicationNote={store.medicationNote}
-                    selectedPlan={store.selectedPlan}
-                    onConfirm={() => setShowSaveModal(true)}
-                    onBack={handlePreviousStep}
-                    onNewClaim={handleNewClaim}
-                    confirmLabel={userRole === 'doctor' ? 'Confirm Claim' : 'Confirm and Finalize Claim'}
-                  />
-
-                  {showCaseActions && store.currentCaseId && (
-                    <CaseActions
-                      onOngoingManagement={() => setCurrentWorkflow('ongoing')}
-                      onMedicationReport={() => setCurrentWorkflow('medication')}
-                      onReferral={() => setCurrentWorkflow('referral')}
-                      onSendToPatient={handleSendToPatient}
-                    />
-                  )}
-                </>
+                <FinalClaimSummary
+                  clinicalNote={store.clinicalNote}
+                  selectedCondition={store.selectedCondition!}
+                  selectedIcdCode={store.selectedIcdCode!}
+                  selectedIcdDescription={store.selectedIcdDescription!}
+                  diagnosticTreatments={store.diagnosticTreatments}
+                  ongoingTreatments={store.ongoingTreatments}
+                  medications={store.medications}
+                  medicationNote={store.medicationNote}
+                  medicationReports={
+                    store.cases.find((c) => c.id === store.currentCaseId)?.medicationReports
+                  }
+                  selectedPlan={store.selectedPlan}
+                  onConfirm={() => setShowSaveModal(true)}
+                  onBack={handlePreviousStep}
+                  confirmLabel="Confirm and Save Claim"
+                />
               )}
 
               {/* Navigation Buttons */}
@@ -1404,73 +1580,59 @@ export default function Home() {
           </>
         )}
 
-        {currentWorkflow === 'ongoing' && store.selectedCondition && (
-          <>
-            <button
-              onClick={() => setCurrentWorkflow('new')}
-              className="btn-secondary flex items-center gap-2 mb-6"
-            >
-              <ArrowLeft className="w-5 h-5" />
-              Back to Case
-            </button>
-            <OngoingManagement
-              condition={store.selectedCondition}
-              treatments={store.ongoingTreatments}
-              onAddTreatment={store.addOngoingTreatment}
-              onUpdateTreatment={store.updateOngoingTreatment}
-              onRemoveTreatment={(index) => {
-                const newTreatments = store.ongoingTreatments.filter((_, i) => i !== index);
-                useStore.setState({ ongoingTreatments: newTreatments });
+        {currentClaimType === 'ongoing-management' && (
+          <OngoingManagement
+            condition={store.selectedCondition || store.cases.find(c => c.id === store.currentCaseId)?.condition || ''}
+            treatments={store.ongoingTreatments}
+            onAddTreatment={store.addOngoingTreatment}
+            onUpdateTreatment={store.updateOngoingTreatment}
+            onRemoveTreatment={(index) => {
+              const newTreatments = store.ongoingTreatments.filter((_, i) => i !== index);
+              useStore.setState({ ongoingTreatments: newTreatments });
+            }}
+            onExportSingleTreatment={handleExportSingleTreatment}
+            onSaveOnly={handleOngoingManagementSaveOnly}
+            onSavePdfOnly={handleOngoingManagementSavePdfOnly}
+            onSaveWithAttachments={handleOngoingManagementSaveWithAttachments}
+          />
+        )}
+
+        {currentClaimType === 'medication-report' && store.currentCaseId && (
+          <MedicationReport
+            currentMedications={store.medications}
+            medicationNote={store.medicationNote}
+            condition={store.selectedCondition || store.cases.find(c => c.id === store.currentCaseId)?.condition || ''}
+            selectedPlan={store.selectedPlan}
+            onSaveOnly={handleMedicationReportSaveOnly}
+            onSavePdfOnly={handleMedicationReportSavePdfOnly}
+            onSaveWithAttachments={handleMedicationReportSaveWithAttachments}
+          />
+        )}
+
+        {currentClaimType === 'referral' && store.currentCaseId && (() => {
+          const currentCase = store.cases.find((c) => c.id === store.currentCaseId);
+          return currentCase ? (
+            <Referral
+              patientCase={currentCase}
+              onSavePdfOnly={(urgency, referralNote, specialistType) => {
+                handleReferralSavePdfOnly(urgency, referralNote, specialistType);
+                if (store.currentCaseId) {
+                  store.updateCase(store.currentCaseId, { status: 'completed' });
+                }
+                store.resetWorkflow();
+                setCurrentView('dashboard');
               }}
-              onExportSingleTreatment={handleExportSingleTreatment}
-              onSaveOnly={handleOngoingManagementSaveOnly}
-              onSavePdfOnly={handleOngoingManagementSavePdfOnly}
-              onSaveWithAttachments={handleOngoingManagementSaveWithAttachments}
+              onSaveWithAttachments={async (urgency, referralNote, specialistType) => {
+                await handleReferralSaveWithAttachments(urgency, referralNote, specialistType);
+                if (store.currentCaseId) {
+                  store.updateCase(store.currentCaseId, { status: 'completed' });
+                }
+                store.resetWorkflow();
+                setCurrentView('dashboard');
+              }}
             />
-          </>
-        )}
-
-        {currentWorkflow === 'medication' && store.currentCaseId && (
-          <>
-            <button
-              onClick={() => setCurrentWorkflow('new')}
-              className="btn-secondary flex items-center gap-2 mb-6"
-            >
-              <ArrowLeft className="w-5 h-5" />
-              Back to Case
-            </button>
-            <MedicationReport
-              currentMedications={store.medications}
-              medicationNote={store.medicationNote}
-              condition={store.selectedCondition!}
-              selectedPlan={store.selectedPlan}
-              onSavePdfOnly={handleMedicationReportSavePdfOnly}
-              onSaveWithAttachments={handleMedicationReportSaveWithAttachments}
-            />
-          </>
-        )}
-
-        {currentWorkflow === 'referral' && store.currentCaseId && (
-          <>
-            <button
-              onClick={() => setCurrentWorkflow('new')}
-              className="btn-secondary flex items-center gap-2 mb-6"
-            >
-              <ArrowLeft className="w-5 h-5" />
-              Back to Case
-            </button>
-            {(() => {
-              const currentCase = store.cases.find(c => c.id === store.currentCaseId);
-              return currentCase ? (
-                <Referral
-                  patientCase={currentCase}
-                  onSavePdfOnly={handleReferralSavePdfOnly}
-                  onSaveWithAttachments={handleReferralSaveWithAttachments}
-                />
-              ) : null;
-            })()}
-          </>
-        )}
+          ) : null;
+        })()}
       </main>
 
       {/* Save Modal */}
@@ -1549,7 +1711,11 @@ export default function Home() {
                   className="w-full py-3 px-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all duration-200 flex items-center justify-center gap-2 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Save className="w-5 h-5" />
-                  {isSaving ? 'Saving...' : 'Save Patient Case'}
+                  {isSaving
+                    ? 'Saving...'
+                    : userRole === 'doctor'
+                    ? 'Confirm and Save Claim'
+                    : 'Save Patient Case'}
                 </button>
                 <p className="text-xs text-gray-500 text-center mb-3">or export documents</p>
                 <button
@@ -1592,7 +1758,14 @@ export default function Home() {
     );
   }
 
-  // Fallback - should not reach here
-  return <Dashboard cases={store.cases} onNewCase={handleNewCaseClick} onViewCase={handleViewCase} />;
+  // Fallback
+  return (
+    <Dashboard
+      cases={store.cases}
+      onNewCase={handleNewCaseClick}
+      onViewCase={handleViewCase}
+      onViewPatientProfile={handleViewPatientProfile}
+    />
+  );
 }
 

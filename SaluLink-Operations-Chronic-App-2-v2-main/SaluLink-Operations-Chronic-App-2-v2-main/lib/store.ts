@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { PatientCase, TreatmentItem, SelectedMedication, MedicalPlan, MedicationReport, ReferralData } from '@/types';
+import { PatientCase, TreatmentItem, SelectedMedication, MedicalPlan, MedicationReport, ReferralData, ClaimType } from '@/types';
 
 interface AppState {
   // Current workflow state
@@ -45,7 +45,7 @@ interface AppState {
   setMedicationNote: (note: string) => void;
   setSelectedPlan: (plan: MedicalPlan) => void;
   
-  saveCase: (patientName: string, patientId: string) => void;
+  saveCase: (patientName: string, patientId: string, claimType?: ClaimType) => void;
   addCase: (patientCase: PatientCase) => void;
   loadCase: (caseId: string) => void;
   updateCase: (caseId: string, updates: Partial<PatientCase>) => void;
@@ -141,7 +141,7 @@ export const useStore = create<AppState>()(
       
       setSelectedPlan: (plan) => set({ selectedPlan: plan }),
       
-      saveCase: (patientName, patientId) => {
+      saveCase: (patientName, patientId, claimType = 'diagnostic') => {
         const state = get();
 
         const uniqueMedications = state.medications.reduce((acc: SelectedMedication[], current) => {
@@ -164,6 +164,7 @@ export const useStore = create<AppState>()(
           id: Date.now().toString(),
           patientName,
           patientId,
+          claimType,
           createdAt: new Date(),
           updatedAt: new Date(),
           clinicalNote: state.clinicalNote,
@@ -219,13 +220,48 @@ export const useStore = create<AppState>()(
         }
       },
       
-      updateCase: (caseId, updates) => set((state) => ({
-        cases: state.cases.map(c =>
+      updateCase: (caseId, updates) => set((state) => {
+        const updatedCases = state.cases.map(c =>
           c.id === caseId
             ? { ...c, ...updates, updatedAt: new Date() }
             : c
-        ),
-      })),
+        );
+
+        if (state.currentCaseId !== caseId) {
+          return { cases: updatedCases };
+        }
+
+        const workflowSync: Partial<AppState> = {};
+        if (updates.ongoingTreatments !== undefined) {
+          workflowSync.ongoingTreatments = updates.ongoingTreatments;
+        }
+        if (updates.diagnosticTreatments !== undefined) {
+          workflowSync.diagnosticTreatments = updates.diagnosticTreatments;
+        }
+        if (updates.medications !== undefined) {
+          workflowSync.medications = updates.medications;
+        }
+        if (updates.medicationNote !== undefined) {
+          workflowSync.medicationNote = updates.medicationNote;
+        }
+        if (updates.clinicalNote !== undefined) {
+          workflowSync.clinicalNote = updates.clinicalNote;
+        }
+        if (updates.condition !== undefined) {
+          workflowSync.selectedCondition = updates.condition;
+        }
+        if (updates.icdCode !== undefined) {
+          workflowSync.selectedIcdCode = updates.icdCode;
+        }
+        if (updates.icdDescription !== undefined) {
+          workflowSync.selectedIcdDescription = updates.icdDescription;
+        }
+        if (updates.plan !== undefined) {
+          workflowSync.selectedPlan = updates.plan;
+        }
+
+        return { cases: updatedCases, ...workflowSync };
+      }),
       
       deleteCase: (caseId) => set((state) => ({
         cases: state.cases.filter(c => c.id !== caseId),

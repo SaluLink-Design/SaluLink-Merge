@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { SelectedMedication } from '@/types';
-import { FileText, Plus, Upload } from 'lucide-react';
+import { FileText, Plus, Save, Upload } from 'lucide-react';
 import MedicationSelection from './MedicationSelection';
 import FileUploadWithRename from './FileUploadWithRename';
 
@@ -11,6 +11,7 @@ interface MedicationReportProps {
   medicationNote: string;
   condition: string;
   selectedPlan: any;
+  onSaveOnly: (followUpNotes: string, newMedications?: SelectedMedication[], motivationLetter?: string, documentation?: { notes: string; images: string[] }) => void;
   onSavePdfOnly: (followUpNotes: string, newMedications?: SelectedMedication[], motivationLetter?: string, documentation?: { notes: string; images: string[] }) => void;
   onSaveWithAttachments: (followUpNotes: string, newMedications?: SelectedMedication[], motivationLetter?: string, documentation?: { notes: string; images: string[] }) => void;
 }
@@ -20,6 +21,7 @@ const MedicationReport = ({
   medicationNote,
   condition,
   selectedPlan,
+  onSaveOnly,
   onSavePdfOnly,
   onSaveWithAttachments
 }: MedicationReportProps) => {
@@ -38,28 +40,37 @@ const MedicationReport = ({
     setNewMedications(newMedications.filter((_, i) => i !== index));
   };
   
-  const handleSavePdfOnly = () => {
+  const getReportPayload = () => {
     const documentation = documentationNotes || documentationImages.length > 0
       ? { notes: documentationNotes, images: documentationImages }
       : undefined;
 
-    onSavePdfOnly(
+    return {
+      documentation,
       followUpNotes,
-      newMedications.length > 0 ? newMedications : undefined,
-      newMedications.length > 0 ? motivationLetter : undefined,
-      documentation
-    );
+      newMedications: newMedications.length > 0 ? newMedications : undefined,
+      motivationLetter: newMedications.length > 0 ? motivationLetter : undefined,
+    };
+  };
+
+  const handleSaveOnly = () => {
+    const { documentation, followUpNotes, newMedications, motivationLetter } = getReportPayload();
+    onSaveOnly(followUpNotes, newMedications, motivationLetter, documentation);
+  };
+
+  const handleSavePdfOnly = () => {
+    const { documentation, followUpNotes, newMedications, motivationLetter } = getReportPayload();
+
+    onSavePdfOnly(followUpNotes, newMedications, motivationLetter, documentation);
   };
 
   const handleSaveWithAttachments = () => {
-    const documentation = documentationNotes || documentationImages.length > 0
-      ? { notes: documentationNotes, images: documentationImages }
-      : undefined;
+    const { documentation, followUpNotes, newMedications, motivationLetter } = getReportPayload();
 
     onSaveWithAttachments(
       followUpNotes,
-      newMedications.length > 0 ? newMedications : undefined,
-      newMedications.length > 0 ? motivationLetter : undefined,
+      newMedications,
+      motivationLetter,
       documentation
     );
   };
@@ -173,14 +184,18 @@ const MedicationReport = ({
         )}
         
         {/* Save Buttons */}
-        <div className="mt-6 flex gap-3 justify-end">
-          <button onClick={handleSavePdfOnly} className="btn-secondary flex items-center gap-2">
-            <FileText className="w-4 h-4" />
-            Save & Export PDF Only
+        <div className="mt-6 flex flex-wrap gap-3 justify-end">
+          <button type="button" onClick={handleSaveOnly} className="btn-secondary flex items-center gap-2">
+            <Save className="w-4 h-4" />
+            Save Without Export
           </button>
-          <button onClick={handleSaveWithAttachments} className="btn-primary flex items-center gap-2">
+          <button type="button" onClick={handleSavePdfOnly} className="btn-secondary flex items-center gap-2">
+            <FileText className="w-4 h-4" />
+            Save &amp; Export PDF Only
+          </button>
+          <button type="button" onClick={handleSaveWithAttachments} className="btn-primary flex items-center gap-2">
             <Upload className="w-4 h-4" />
-            Save & Export with Attachments (ZIP)
+            Save &amp; Export with Attachments (ZIP)
           </button>
         </div>
       </div>

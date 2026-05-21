@@ -1,6 +1,6 @@
 'use client';
 
-import { PatientCase } from '@/types';
+import { MedicationReport, PatientCase } from '@/types';
 import { FileText, CheckCircle, Pill, Stethoscope, FileBarChart, ClipboardList } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -13,10 +13,10 @@ interface FinalClaimSummaryProps {
   ongoingTreatments: any[];
   medications: any[];
   medicationNote: string;
+  medicationReports?: MedicationReport[];
   selectedPlan: string;
   onConfirm: () => void;
   onBack: () => void;
-  onNewClaim: () => void;
   confirmLabel?: string;
 }
 
@@ -29,11 +29,11 @@ const FinalClaimSummary = ({
   ongoingTreatments,
   medications,
   medicationNote,
+  medicationReports = [],
   selectedPlan,
   onConfirm,
   onBack,
-  onNewClaim,
-  confirmLabel = 'Confirm and Finalize Claim',
+  confirmLabel = 'Confirm and Save Claim',
 }: FinalClaimSummaryProps) => {
   return (
     <div className="space-y-6">
@@ -206,6 +206,54 @@ const FinalClaimSummary = ({
               )}
             </div>
           )}
+
+          {medicationReports.length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-lg p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Pill className="w-5 h-5 text-purple-600" />
+                <h3 className="font-semibold text-lg text-gray-900">Medication Report Updates</h3>
+              </div>
+              <div className="space-y-4">
+                {medicationReports.map((report, index) => (
+                  <div key={report.id || index} className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                    <p className="text-xs font-medium text-purple-700 uppercase tracking-wide">
+                      Report {index + 1}
+                    </p>
+                    {report.followUpNotes && (
+                      <div className="mt-3">
+                        <p className="text-sm font-medium text-gray-600">Follow-up notes</p>
+                        <p className="text-sm text-gray-800 mt-1 whitespace-pre-wrap">{report.followUpNotes}</p>
+                      </div>
+                    )}
+                    {report.newMedications.length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-sm font-medium text-gray-600">New medications added</p>
+                        <ul className="mt-2 space-y-1">
+                          {report.newMedications.map((med, medIndex) => (
+                            <li key={medIndex} className="text-sm text-gray-800">
+                              {med.medicineNameAndStrength} ({med.activeIngredient})
+                            </li>
+                          ))}
+                        </ul>
+                        {report.motivationLetter && (
+                          <p className="text-sm text-gray-700 mt-2 whitespace-pre-wrap">
+                            <span className="font-medium">Motivation: </span>
+                            {report.motivationLetter}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {report.documentation?.notes && (
+                      <div className="mt-3 pt-3 border-t border-purple-200">
+                        <p className="text-sm font-medium text-gray-600">Documentation</p>
+                        <p className="text-sm text-gray-800 mt-1">{report.documentation.notes}</p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Summary Stats */}
@@ -232,29 +280,19 @@ const FinalClaimSummary = ({
         </div>
 
         {/* Action Buttons */}
-        <div className="space-y-3 mt-8 pt-6 border-t border-gray-200">
-          <div className="flex gap-3">
-            <button
-              onClick={onBack}
-              className="btn-secondary flex-1"
-            >
-              Back to Edit
-            </button>
-            <button
-              onClick={onConfirm}
-              className="btn-primary flex-1 flex items-center justify-center gap-2"
-            >
-              <CheckCircle className="w-5 h-5" />
-              {confirmLabel}
-            </button>
-          </div>
-
+        <div className="flex gap-3 mt-8 pt-6 border-t border-gray-200">
           <button
-            onClick={onNewClaim}
-            className="w-full py-3 px-4 bg-gradient-to-r from-primary-600 to-blue-600 text-white font-semibold rounded-lg hover:from-primary-700 hover:to-blue-700 transition-all duration-200 flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
+            onClick={onBack}
+            className="btn-secondary flex-1"
           >
-            <FileText className="w-5 h-5" />
-            Start New Claim
+            Back to Edit
+          </button>
+          <button
+            onClick={onConfirm}
+            className="btn-primary flex-1 flex items-center justify-center gap-2"
+          >
+            <CheckCircle className="w-5 h-5" />
+            {confirmLabel}
           </button>
         </div>
       </div>

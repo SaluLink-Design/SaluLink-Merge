@@ -1,13 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowLeft, Save } from 'lucide-react';
-import { MedicalPlan } from '@/types';
+import { ArrowLeft, Save, Stethoscope, Activity, Pill } from 'lucide-react';
+import { MedicalPlan, ClaimType } from '@/types';
 
 interface PatientInfoFormProps {
   onSave: (patientInfo: PatientInfo) => void;
   onCancel: () => void;
   isLoading?: boolean;
+  prefillData?: Partial<PatientInfo>;
 }
 
 export interface PatientInfo {
@@ -17,18 +18,44 @@ export interface PatientInfo {
   patientEmail: string;
   patientPhone: string;
   plan: MedicalPlan;
+  claimType: ClaimType;
 }
 
-const PatientInfoForm = ({ onSave, onCancel, isLoading = false }: PatientInfoFormProps) => {
+const claimTypeOptions: { value: ClaimType; label: string; description: string; icon: React.ReactNode; color: string }[] = [
+  {
+    value: 'diagnostic',
+    label: 'Diagnostic Claim',
+    description: 'Full 6-step clinical workflow — clinical note, condition, ICD code, diagnostics, medication.',
+    icon: <Stethoscope className="w-5 h-5" />,
+    color: 'blue',
+  },
+  {
+    value: 'ongoing-management',
+    label: 'Ongoing Management',
+    description: 'Monitoring and treatment protocols for an existing condition.',
+    icon: <Activity className="w-5 h-5" />,
+    color: 'emerald',
+  },
+  {
+    value: 'medication-report',
+    label: 'Medication Report',
+    description: 'Follow-up notes and new prescriptions for a registered chronic patient.',
+    icon: <Pill className="w-5 h-5" />,
+    color: 'violet',
+  },
+];
+
+const PatientInfoForm = ({ onSave, onCancel, isLoading = false, prefillData }: PatientInfoFormProps) => {
   const planOptions: MedicalPlan[] = ['Core', 'Priority', 'Saver', 'Executive', 'Comprehensive'];
 
   const [formData, setFormData] = useState<PatientInfo>({
-    patientName: '',
-    patientId: '',
-    medicalAidNumber: '',
-    patientEmail: '',
-    patientPhone: '',
-    plan: 'Core',
+    patientName: prefillData?.patientName ?? '',
+    patientId: prefillData?.patientId ?? '',
+    medicalAidNumber: prefillData?.medicalAidNumber ?? '',
+    patientEmail: prefillData?.patientEmail ?? '',
+    patientPhone: prefillData?.patientPhone ?? '',
+    plan: prefillData?.plan ?? 'Core',
+    claimType: prefillData?.claimType ?? 'diagnostic',
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof PatientInfo, string>>>({});
@@ -45,6 +72,7 @@ const PatientInfoForm = ({ onSave, onCancel, isLoading = false }: PatientInfoFor
     }
     if (!formData.patientPhone.trim()) newErrors.patientPhone = 'Phone number is required';
     if (!formData.plan) newErrors.plan = 'Medical plan is required';
+    if (!formData.claimType) newErrors.claimType = 'Claim type is required';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -204,6 +232,43 @@ const PatientInfoForm = ({ onSave, onCancel, isLoading = false }: PatientInfoFor
                 disabled={isLoading}
               />
               {errors.patientPhone && <p className="text-red-500 text-sm mt-1">{errors.patientPhone}</p>}
+            </div>
+
+            {/* Claim Type */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-3">Claim Type *</label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {claimTypeOptions.map((opt) => {
+                  const selected = formData.claimType === opt.value;
+                  const colorMap: Record<string, string> = {
+                    blue: selected
+                      ? 'border-blue-600 bg-blue-50 text-blue-700'
+                      : 'border-gray-300 bg-white text-gray-700 hover:border-blue-400',
+                    emerald: selected
+                      ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
+                      : 'border-gray-300 bg-white text-gray-700 hover:border-emerald-400',
+                    violet: selected
+                      ? 'border-violet-600 bg-violet-50 text-violet-700'
+                      : 'border-gray-300 bg-white text-gray-700 hover:border-violet-400',
+                  };
+                  return (
+                    <button
+                      type="button"
+                      key={opt.value}
+                      onClick={() => handleChange('claimType', opt.value)}
+                      disabled={isLoading}
+                      className={`flex flex-col gap-2 rounded-xl border-2 p-4 text-left transition-colors ${colorMap[opt.color]}`}
+                    >
+                      <span className="flex items-center gap-2 font-semibold text-sm">
+                        {opt.icon}
+                        {opt.label}
+                      </span>
+                      <span className="text-xs leading-relaxed opacity-75">{opt.description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {errors.claimType && <p className="text-red-500 text-sm mt-1">{errors.claimType}</p>}
             </div>
           </div>
 

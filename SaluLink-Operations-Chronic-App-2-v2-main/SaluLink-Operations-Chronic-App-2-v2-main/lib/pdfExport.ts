@@ -104,31 +104,10 @@ export class PDFExportService {
     const pdfBlob = this.doc.output('blob');
     zip.file(`${fileName}.pdf`, pdfBlob);
 
-    const allTreatments = [
-      ...patientCase.diagnosticTreatments,
-      ...patientCase.ongoingTreatments
-    ];
-
     let fileCounter = 1;
-    allTreatments.forEach((treatment) => {
-      if (treatment.documentation.images && treatment.documentation.images.length > 0) {
-        treatment.documentation.images.forEach((fileData) => {
-          try {
-            const parsed = JSON.parse(fileData);
-            const base64Data = parsed.data.split(',')[1];
-            const sanitizedName = parsed.name.replace(/[^a-z0-9.-]/gi, '_');
-            zip.file(`attachment-${fileCounter}-${sanitizedName}`, base64Data, { base64: true });
-            fileCounter++;
-          } catch {
-            const base64Data = fileData.split(',')[1];
-            if (base64Data) {
-              zip.file(`attachment-${fileCounter}.jpg`, base64Data, { base64: true });
-              fileCounter++;
-            }
-          }
-        });
-      }
-    });
+    fileCounter = this.appendTreatmentImagesToZip(zip, patientCase.diagnosticTreatments, fileCounter);
+    fileCounter = this.appendTreatmentImagesToZip(zip, patientCase.ongoingTreatments, fileCounter);
+    fileCounter = this.appendMedicationReportImagesToZip(zip, patientCase.medicationReports, fileCounter);
 
     const zipBlob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(zipBlob);
@@ -137,6 +116,53 @@ export class PDFExportService {
     link.download = `${fileName}.zip`;
     link.click();
     URL.revokeObjectURL(url);
+  }
+
+  private appendTreatmentImagesToZip(
+    zip: JSZip,
+    treatments: PatientCase['diagnosticTreatments'],
+    fileCounter: number
+  ): number {
+    let counter = fileCounter;
+    treatments.forEach((treatment) => {
+      if (treatment.documentation.images && treatment.documentation.images.length > 0) {
+        treatment.documentation.images.forEach((fileData) => {
+          counter = this.appendImageFileToZip(zip, fileData, counter);
+        });
+      }
+    });
+    return counter;
+  }
+
+  private appendMedicationReportImagesToZip(
+    zip: JSZip,
+    reports: PatientCase['medicationReports'],
+    fileCounter: number
+  ): number {
+    let counter = fileCounter;
+    reports?.forEach((report) => {
+      if (report.documentation?.images && report.documentation.images.length > 0) {
+        report.documentation.images.forEach((fileData) => {
+          counter = this.appendImageFileToZip(zip, fileData, counter);
+        });
+      }
+    });
+    return counter;
+  }
+
+  private appendImageFileToZip(zip: JSZip, fileData: string, fileCounter: number): number {
+    try {
+      const parsed = JSON.parse(fileData);
+      const base64Data = parsed.data.split(',')[1];
+      const sanitizedName = parsed.name.replace(/[^a-z0-9.-]/gi, '_');
+      zip.file(`attachment-${fileCounter}-${sanitizedName}`, base64Data, { base64: true });
+    } catch {
+      const base64Data = fileData.split(',')[1];
+      if (base64Data) {
+        zip.file(`attachment-${fileCounter}.jpg`, base64Data, { base64: true });
+      }
+    }
+    return fileCounter + 1;
   }
 
   exportInitialClaim(patientCase: PatientCase): void {
@@ -189,6 +215,26 @@ export class PDFExportService {
       this.addDivider();
     }
 
+    if (patientCase.ongoingTreatments.length > 0) {
+      this.addSubtitle('Ongoing Management');
+      patientCase.ongoingTreatments.forEach((treatment, index) => {
+        this.addText(`${index + 1}. ${treatment.description}`, 5);
+        this.addBoldText('  Code: ', treatment.code, 10);
+        this.addBoldText('  Times Completed: ', `${treatment.timesCompleted} of ${treatment.maxCovered}`, 10);
+        if (treatment.documentation.notes) {
+          this.addText(`  Notes: ${treatment.documentation.notes}`, 10);
+        }
+        if (treatment.documentation.findings) {
+          this.addText(`  Findings: ${treatment.documentation.findings}`, 10);
+        }
+        if (treatment.documentation.images && treatment.documentation.images.length > 0) {
+          this.addText(`  Attachments: ${treatment.documentation.images.length} file(s)`, 10);
+        }
+        this.yPosition += 3;
+      });
+      this.addDivider();
+    }
+
     if (patientCase.medications.length > 0) {
       this.addSubtitle('Prescribed Medications');
       patientCase.medications.forEach((med, index) => {
@@ -203,6 +249,30 @@ export class PDFExportService {
         this.addText('Registration Note:', 5);
         this.addText(patientCase.medicationNote, 10);
       }
+      this.addDivider();
+    }
+
+    if (patientCase.medicationReports && patientCase.medicationReports.length > 0) {
+      this.addSubtitle('Medication Report Updates');
+      patientCase.medicationReports.forEach((report, index) => {
+        this.addText(`Report #${index + 1} - ${format(new Date(report.createdAt), 'MMM dd, yyyy')}`, 5);
+        if (report.followUpNotes) {
+          this.addText(`Follow-up: ${report.followUpNotes}`, 10);
+        }
+        if (report.newMedications.length > 0) {
+          this.addText('New medications added:', 10);
+          report.newMedications.forEach((med) => {
+            this.addText(`• ${med.medicineNameAndStrength} (${med.activeIngredient})`, 15);
+          });
+          if (report.motivationLetter) {
+            this.addText(`Motivation: ${report.motivationLetter}`, 10);
+          }
+        }
+        if (report.documentation?.notes) {
+          this.addText(`Documentation: ${report.documentation.notes}`, 10);
+        }
+        this.yPosition += 3;
+      });
       this.addDivider();
     }
 

@@ -67,6 +67,8 @@ export interface SelectedMedication {
 
 export type MedicalPlan = 'Core' | 'Priority' | 'Saver' | 'Executive' | 'Comprehensive';
 
+export type ClaimType = 'diagnostic' | 'ongoing-management' | 'medication-report' | 'referral';
+
 export interface PatientCase {
   id: string;
   patientName: string;
@@ -74,6 +76,7 @@ export interface PatientCase {
   patientEmail?: string;
   patientPhone?: string;
   medicalAidNumber?: string;
+  claimType: ClaimType;
   createdAt: Date;
   updatedAt: Date;
   clinicalNote: string;
