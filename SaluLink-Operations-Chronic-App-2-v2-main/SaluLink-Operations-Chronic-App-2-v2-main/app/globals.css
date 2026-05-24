@@ -83,6 +83,331 @@
     @apply bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-transparent;
   }
 
+  /* SaluLink "Link" wordmark — cyan → blue → lavender (matches logo) */
+  .brand-link-gradient-text {
+    background: linear-gradient(
+      90deg,
+      #38b6ff 0%,
+      #4f9fff 28%,
+      #6366f1 58%,
+      #c084fc 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* ── Authi workflow gradient — fills buttons, step circles, connectors ── */
+  .authi-gradient {
+    background: linear-gradient(
+      90deg,
+      #38b6ff 0%,
+      #4f9fff 28%,
+      #6366f1 58%,
+      #c084fc 100%
+    );
+  }
+
+  .authi-gradient-text {
+    background: linear-gradient(
+      90deg,
+      #38b6ff 0%,
+      #4f9fff 28%,
+      #6366f1 58%,
+      #c084fc 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Authi accent tints — for card backgrounds, borders, subtle highlights */
+  .authi-tint {
+    background: linear-gradient(135deg, rgba(56,182,255,0.08) 0%, rgba(99,102,241,0.08) 100%);
+  }
+
+  /* Authi pill badges — claim type, status */
+  .authi-badge-pill {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border;
+    background: linear-gradient(
+      135deg,
+      rgba(56, 182, 255, 0.14) 0%,
+      rgba(99, 102, 241, 0.12) 50%,
+      rgba(192, 132, 252, 0.14) 100%
+    );
+    border-color: rgba(99, 102, 241, 0.35);
+  }
+
+  .authi-badge-pill > span {
+    background: linear-gradient(
+      90deg,
+      #38b6ff 0%,
+      #4f9fff 28%,
+      #6366f1 58%,
+      #c084fc 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* User avatar circle */
+  .authi-avatar {
+    @apply flex items-center justify-center shrink-0 rounded-full shadow-sm;
+    background: linear-gradient(
+      90deg,
+      #38b6ff 0%,
+      #4f9fff 28%,
+      #6366f1 58%,
+      #c084fc 100%
+    );
+  }
+
+  .authi-avatar-lg {
+    @apply flex items-center justify-center shrink-0 rounded-2xl shadow-md;
+    background: linear-gradient(
+      90deg,
+      #38b6ff 0%,
+      #4f9fff 28%,
+      #6366f1 58%,
+      #c084fc 100%
+    );
+  }
+
+  /* Case action cards (New Case Action panel) */
+  .authi-action-card {
+    @apply flex flex-col gap-2 rounded-2xl border-2 p-4 text-left transition-all bg-white;
+    border-color: rgba(99, 102, 241, 0.2);
+  }
+
+  .authi-action-card:hover {
+    border-color: rgba(99, 102, 241, 0.55);
+    background: linear-gradient(
+      135deg,
+      rgba(56, 182, 255, 0.06) 0%,
+      rgba(192, 132, 252, 0.06) 100%
+    );
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.12);
+  }
+
+  /* Text link (View Claim) */
+  .authi-link {
+    @apply font-medium transition-colors rounded-lg;
+  }
+
+  .authi-link:hover {
+    background: linear-gradient(
+      135deg,
+      rgba(56, 182, 255, 0.1) 0%,
+      rgba(192, 132, 252, 0.1) 100%
+    );
+  }
+
+  /* ── Landing + assistant workspace (style matrix) ── */
+  .authi-btn-primary {
+    @apply text-white font-semibold transition hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2;
+    background: linear-gradient(
+      90deg,
+      #38b6ff 0%,
+      #4f9fff 28%,
+      #6366f1 58%,
+      #c084fc 100%
+    );
+    --tw-ring-color: rgba(99, 102, 241, 0.45);
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.2);
+  }
+
+  .authi-btn-secondary {
+    @apply rounded-2xl border bg-white text-slate-700 font-semibold transition hover:bg-slate-50
+           focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[rgba(56,182,255,0.25)];
+    border-color: rgba(56, 182, 255, 0.45);
+  }
+
+  .authi-btn-secondary:hover {
+    border-color: rgba(56, 182, 255, 0.7);
+  }
+
+  .authi-role-pill-active {
+    @apply rounded-xl border px-4 py-2 text-xs font-semibold authi-tint;
+    border-color: rgba(56, 182, 255, 0.55);
+  }
+
+  .authi-role-pill-inactive {
+    @apply rounded-xl border bg-white px-4 py-2 text-xs font-semibold text-slate-500 transition
+           hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-[rgba(56,182,255,0.2)];
+    border-color: rgba(56, 182, 255, 0.35);
+  }
+
+  .authi-role-pill-inactive:hover {
+    border-color: rgba(56, 182, 255, 0.55);
+  }
+
+  .authi-tab-selected {
+    @apply rounded-xl px-5 py-2.5 text-sm font-semibold authi-tint shadow-sm border;
+    border-color: rgba(56, 182, 255, 0.5);
+  }
+
+  .authi-tab-inactive {
+    @apply rounded-xl px-5 py-2.5 text-sm font-semibold text-slate-600 transition
+           hover:text-slate-900 hover:bg-white/60
+           focus:outline-none focus:ring-2 focus:ring-[rgba(56,182,255,0.15)];
+  }
+
+  .authi-tab-group {
+    @apply inline-flex rounded-2xl border bg-slate-50 p-1;
+    border-color: rgba(56, 182, 255, 0.4);
+  }
+
+  .authi-choice-card {
+    @apply rounded-[28px] border bg-white p-10 text-left transition-all shadow-sm
+           focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgba(56,182,255,0.35)] focus-visible:ring-offset-2;
+    border-color: rgba(56, 182, 255, 0.4);
+  }
+
+  .authi-choice-card:hover {
+    border-color: rgba(56, 182, 255, 0.65);
+    background: linear-gradient(
+      135deg,
+      rgba(56, 182, 255, 0.04) 0%,
+      rgba(192, 132, 252, 0.04) 100%
+    );
+    box-shadow: 0 8px 24px rgba(56, 182, 255, 0.12);
+  }
+
+  .authi-panel-card {
+    @apply rounded-3xl border bg-white p-6 transition focus-within:ring-2 focus-within:ring-[rgba(56,182,255,0.15)];
+    border-color: rgba(56, 182, 255, 0.4);
+  }
+
+  .authi-panel-card:hover {
+    border-color: rgba(56, 182, 255, 0.55);
+  }
+
+  .authi-surface-card {
+    @apply rounded-[32px] bg-white border shadow-sm transition focus-within:ring-2 focus-within:ring-[rgba(56,182,255,0.12)];
+    border-color: rgba(56, 182, 255, 0.4);
+  }
+
+  .authi-surface-card:hover {
+    border-color: rgba(56, 182, 255, 0.55);
+  }
+
+  /* Dashboard stat tiles (assistant + doctor records) */
+  .authi-stat-card {
+    @apply rounded-2xl border bg-slate-50 p-6 transition;
+    border-color: rgba(56, 182, 255, 0.4);
+  }
+
+  .authi-stat-card:hover {
+    border-color: rgba(56, 182, 255, 0.55);
+  }
+
+  /* Doctor workspace header — Authi gradient strokes only */
+  .authi-gradient-border-stat {
+    @apply rounded-2xl p-6 shadow-sm transition;
+    border: 1.5px solid transparent;
+    background-image:
+      linear-gradient(#f8fafc, #f8fafc),
+      linear-gradient(90deg, #38b6ff 0%, #4f9fff 28%, #6366f1 58%, #c084fc 100%);
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
+  }
+
+  .authi-gradient-border-stat:hover {
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.1);
+  }
+
+  .authi-btn-gradient-border {
+    @apply rounded-2xl text-slate-700 font-semibold transition focus:outline-none focus:ring-2 focus:ring-offset-2;
+    border: 1.5px solid transparent;
+    background-image:
+      linear-gradient(#ffffff, #ffffff),
+      linear-gradient(90deg, #38b6ff 0%, #4f9fff 28%, #6366f1 58%, #c084fc 100%);
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
+    --tw-ring-color: rgba(99, 102, 241, 0.2);
+  }
+
+  .authi-btn-gradient-border:hover {
+    background-image:
+      linear-gradient(#f8fafc, #f8fafc),
+      linear-gradient(90deg, #38b6ff 0%, #4f9fff 28%, #6366f1 58%, #c084fc 100%);
+  }
+
+  .authi-gradient-border-panel {
+    @apply rounded-2xl shadow-sm transition;
+    border: 1.5px solid transparent;
+    background-image:
+      linear-gradient(#ffffff, #ffffff),
+      linear-gradient(90deg, #38b6ff 0%, #4f9fff 28%, #6366f1 58%, #c084fc 100%);
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
+  }
+
+  .authi-input-gradient-border {
+    @apply w-full rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none transition;
+    border: 1.5px solid transparent;
+    background-image:
+      linear-gradient(#f8fafc, #f8fafc),
+      linear-gradient(90deg, #38b6ff 0%, #4f9fff 28%, #6366f1 58%, #c084fc 100%);
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
+  }
+
+  .authi-input-gradient-border:focus {
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+  }
+
+  .authi-gradient-line {
+    height: 1.5px;
+    background: linear-gradient(
+      90deg,
+      #38b6ff 0%,
+      #4f9fff 28%,
+      #6366f1 58%,
+      #c084fc 100%
+    );
+  }
+
+  .authi-input {
+    @apply w-full rounded-xl bg-slate-50 text-slate-900 placeholder-slate-400 border border-slate-200
+           focus:outline-none focus:ring-2 focus:ring-[#6366f1]/40 focus:border-[#6366f1];
+  }
+
+  .authi-plan-chip {
+    @apply px-4 py-2 rounded-xl border font-medium transition-all text-sm border-slate-200 bg-white text-slate-600
+           hover:border-[rgba(99,102,241,0.45)] hover:text-slate-800;
+  }
+
+  .authi-plan-chip-selected {
+    @apply px-4 py-2 rounded-xl border font-medium text-sm authi-tint;
+    border-color: rgba(99, 102, 241, 0.45);
+  }
+
+  .authi-plan-chip-selected > span {
+    background: linear-gradient(
+      90deg,
+      #38b6ff 0%,
+      #4f9fff 28%,
+      #6366f1 58%,
+      #c084fc 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Claim detail sections (assistant + doctor) */
+  .authi-section-card {
+    @apply authi-tint border rounded-2xl p-6 mb-6;
+    border-color: rgba(99, 102, 241, 0.2);
+  }
+
+  .authi-sub-card {
+    @apply authi-tint border rounded-xl p-4;
+    border-color: rgba(99, 102, 241, 0.15);
+  }
+
   .brand-icon {
     @apply w-10 h-10 rounded-xl flex items-center justify-center
            bg-gradient-to-br from-blue-100 to-violet-100;

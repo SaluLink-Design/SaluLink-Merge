@@ -26,12 +26,12 @@ const navItems: NavItem[] = [
   },
   {
     label: 'Clinical Notes',
-    activeViews: ['workflow', 'patient-info', 'case-options'],
+    activeViews: ['workflow', 'case-options'],
     targetView: 'dashboard',
   },
   {
     label: 'Patients',
-    activeViews: ['patient-profile', 'assistant-home'],
+    activeViews: ['patient-profile', 'assistant-home', 'patient-info'],
     targetView: 'dashboard',
   },
   {
@@ -49,16 +49,23 @@ const navItems: NavItem[] = [
 interface AppSidebarProps {
   currentView: AppView;
   onNavigate: (view: AppView) => void;
+  userRole?: string | null;
 }
 
-const AppSidebar = ({ currentView, onNavigate }: AppSidebarProps) => {
+const AppSidebar = ({ currentView, onNavigate, userRole }: AppSidebarProps) => {
+  const isDoctorWorkspace = userRole === 'doctor';
+
   return (
     <aside className="fixed top-0 left-0 h-full w-60 bg-[#08080f] border-r border-white/5 flex flex-col z-30 shrink-0">
-      {/* SaluLink logo */}
+      {/* SaluLink logo — gradient Link in doctor workspace; flat cyan elsewhere */}
       <div className="px-6 pt-7 pb-1">
         <p className="text-[22px] font-bold tracking-tight leading-none">
           <span className="text-white">Salu</span>
-          <span className="text-[#38b6ff]">Link</span>
+          {isDoctorWorkspace ? (
+            <span className="brand-link-gradient-text">Link</span>
+          ) : (
+            <span className="text-[#38b6ff]">Link</span>
+          )}
         </p>
       </div>
 
@@ -73,7 +80,7 @@ const AppSidebar = ({ currentView, onNavigate }: AppSidebarProps) => {
             priority
           />
         </div>
-        <p className="mt-3 text-[13px] font-medium text-violet-400 tracking-wide">
+        <p className="mt-3 text-[13px] font-semibold brand-link-gradient-text tracking-wide">
           Powered by Authi
         </p>
       </div>
@@ -85,20 +92,33 @@ const AppSidebar = ({ currentView, onNavigate }: AppSidebarProps) => {
       <nav className="flex-1 px-3 space-y-0.5">
         {navItems.map((item) => {
           const isActive = item.activeViews.includes(currentView);
+          const showNewCaseSubItem =
+            item.label === 'Patients' && currentView === 'patient-info';
+
           return (
-            <button
-              key={item.label}
-              type="button"
-              onClick={() => item.targetView && onNavigate(item.targetView)}
-              disabled={!item.targetView}
-              className={
-                isActive
-                  ? 'w-full flex items-center px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-violet-600 shadow-lg shadow-violet-900/30'
-                  : 'w-full flex items-center px-4 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors disabled:cursor-default disabled:opacity-50'
-              }
-            >
-              {item.label}
-            </button>
+            <div key={item.label}>
+              <button
+                type="button"
+                onClick={() => item.targetView && onNavigate(item.targetView)}
+                disabled={!item.targetView}
+                className={
+                  isActive
+                    ? 'w-full flex items-center px-4 py-2.5 rounded-xl text-sm font-semibold text-white authi-gradient shadow-lg shadow-[#6366f1]/30 hover:opacity-90'
+                    : 'w-full flex items-center px-4 py-2.5 rounded-xl text-sm text-slate-400 hover:text-white hover:bg-white/5 transition-colors disabled:cursor-default disabled:opacity-50'
+                }
+              >
+                {item.label}
+              </button>
+
+              {showNewCaseSubItem && (
+                <div className="ml-4 mt-0.5 flex items-center gap-2 px-4 py-2">
+                  <span className="text-slate-600 text-xs select-none">└</span>
+                  <span className="text-xs font-medium brand-link-gradient-text">
+                    Creating new case
+                  </span>
+                </div>
+              )}
+            </div>
           );
         })}
       </nav>

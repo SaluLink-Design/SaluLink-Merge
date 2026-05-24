@@ -1044,7 +1044,7 @@ export default function Home() {
         <div className="max-w-4xl mx-auto px-6 py-10">
 
           {/* Practice context strip */}
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-8 rounded-2xl bg-white border border-slate-200 px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-8 rounded-2xl bg-white border border-[#38b6ff]/40 px-5 py-4 transition hover:border-[#38b6ff]/60">
             <div>
               <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Practice</p>
               <p className={`mt-0.5 text-sm font-semibold ${practiceName ? 'text-slate-900' : 'text-slate-400'}`}>
@@ -1057,75 +1057,79 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={() => setLandingRole('assistant')}
-                  className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
+                  className={
                     landingRole === 'assistant'
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-slate-200 bg-white text-slate-500 hover:border-blue-400 hover:text-blue-600'
-                  }`}
+                      ? 'authi-role-pill-active'
+                      : 'authi-role-pill-inactive'
+                  }
                 >
-                  Assistant{assistantName ? ` · ${assistantName}` : ''}
+                  <span className={landingRole === 'assistant' ? 'authi-gradient-text font-bold' : ''}>
+                    Assistant{assistantName ? ` · ${assistantName}` : ''}
+                  </span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setLandingRole('doctor')}
-                  className={`rounded-xl border px-4 py-2 text-xs font-semibold transition ${
+                  className={
                     landingRole === 'doctor'
-                      ? 'border-violet-500 bg-violet-50 text-violet-700'
-                      : 'border-slate-200 bg-white text-slate-500 hover:border-violet-400 hover:text-violet-600'
-                  }`}
+                      ? 'authi-role-pill-active'
+                      : 'authi-role-pill-inactive'
+                  }
                 >
-                  Doctor{doctorName ? ` · ${doctorName}` : ''}
+                  <span className={landingRole === 'doctor' ? 'authi-gradient-text font-bold' : ''}>
+                    Doctor{doctorName ? ` · ${doctorName}` : ''}
+                  </span>
                 </button>
               </div>
             )}
 
             <button
               onClick={handleStartOnboarding}
-              className="rounded-xl bg-primary-400 px-4 py-2 text-xs font-semibold text-slate-950 hover:bg-primary-500 transition"
+              className="authi-btn-primary rounded-xl px-4 py-2 text-xs"
             >
               Practice onboarding
             </button>
           </div>
 
           {/* Main welcome content */}
-          <div className="rounded-[32px] bg-white p-10 border border-slate-200">
+          <div className="authi-surface-card p-10">
             <div className="max-w-3xl">
               {isPracticeReady ? (
                 <>
-                  <p className="text-sm font-semibold uppercase tracking-[0.3em] text-indigo-600">Welcome back</p>
+                  <p className="text-sm font-bold uppercase tracking-[0.3em] authi-gradient-text">Welcome back</p>
                   <h2 className="mt-4 text-4xl font-semibold text-slate-950">Choose how you want to work today</h2>
                   <p className="mt-6 text-lg leading-8 text-slate-600">
                     Switch between assistant and doctor roles for {practiceName}. Open the workspace for the role you need.
                   </p>
 
-                  <div className="mt-8 inline-flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
+                  <div className="authi-tab-group mt-8">
                     <button
                       type="button"
                       onClick={() => setLandingRole('assistant')}
-                      className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
-                        landingRole === 'assistant'
-                          ? 'bg-white text-slate-950 shadow-sm'
-                          : 'text-slate-600 hover:text-slate-950'
-                      }`}
+                      className={
+                        landingRole === 'assistant' ? 'authi-tab-selected' : 'authi-tab-inactive'
+                      }
                     >
-                      Assistant{assistantName ? ` · ${assistantName}` : ''}
+                      <span className={landingRole === 'assistant' ? 'authi-gradient-text font-bold' : ''}>
+                        Assistant{assistantName ? ` · ${assistantName}` : ''}
+                      </span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setLandingRole('doctor')}
-                      className={`rounded-xl px-5 py-2.5 text-sm font-semibold transition ${
-                        landingRole === 'doctor'
-                          ? 'bg-white text-slate-950 shadow-sm'
-                          : 'text-slate-600 hover:text-slate-950'
-                      }`}
+                      className={
+                        landingRole === 'doctor' ? 'authi-tab-selected' : 'authi-tab-inactive'
+                      }
                     >
-                      Doctor{doctorName ? ` · ${doctorName}` : ''}
+                      <span className={landingRole === 'doctor' ? 'authi-gradient-text font-bold' : ''}>
+                        Doctor{doctorName ? ` · ${doctorName}` : ''}
+                      </span>
                     </button>
                   </div>
 
                   {landingRole === 'assistant' ? (
-                    <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-6">
-                      <p className="text-sm uppercase tracking-[0.24em] text-blue-600">Assistant role</p>
+                    <div className="authi-panel-card mt-8 authi-tint">
+                      <p className="text-sm uppercase tracking-[0.24em] authi-gradient-text font-bold">Assistant role</p>
                       <h3 className="mt-3 text-xl font-semibold text-slate-900">Patient intake and records</h3>
                       <p className="mt-2 text-sm leading-6 text-slate-600">
                         Create new patient cases and browse saved records. Download claim PDFs or ZIP exports once the doctor has finalized a case.
@@ -1133,14 +1137,14 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={handleOpenAssistantWorkspace}
-                        className="mt-6 rounded-2xl bg-primary-400 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-primary-500 transition"
+                        className="authi-btn-primary mt-6 rounded-2xl px-5 py-3 text-sm"
                       >
                         Open assistant workspace
                       </button>
                     </div>
                   ) : (
-                    <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-6">
-                      <p className="text-sm uppercase tracking-[0.24em] text-violet-600">Doctor role</p>
+                    <div className="authi-panel-card mt-8 authi-tint">
+                      <p className="text-sm uppercase tracking-[0.24em] authi-gradient-text font-bold">Doctor role</p>
                       <h3 className="mt-3 text-xl font-semibold text-slate-900">Claim workflow and sign-off</h3>
                       <p className="mt-2 text-sm leading-6 text-slate-600">
                         Review cases, select conditions, match ICD codes, and finalize claims for your patients.
@@ -1148,7 +1152,7 @@ export default function Home() {
                       <button
                         type="button"
                         onClick={handleOpenDoctorWorkspace}
-                        className="mt-6 rounded-2xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white hover:bg-violet-700 transition"
+                        className="authi-btn-primary mt-6 rounded-2xl px-5 py-3 text-sm"
                       >
                         Open doctor workspace
                       </button>
@@ -1157,19 +1161,19 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  <p className="text-sm font-semibold uppercase tracking-[0.3em] text-indigo-600">Welcome</p>
+                  <p className="text-sm font-bold uppercase tracking-[0.3em] authi-gradient-text">Welcome</p>
                   <h2 className="mt-4 text-4xl font-semibold text-slate-950">Your practice onboarding and claim workflow, built for teams.</h2>
                   <p className="mt-6 text-lg leading-8 text-slate-600">
                     Begin by registering your practice. Once onboarding is complete, you can switch between assistant and doctor roles from this page.
                   </p>
 
                   <div className="mt-10 grid gap-6 sm:grid-cols-2">
-                    <div className="rounded-3xl border border-slate-200 p-6">
+                    <div className="authi-panel-card">
                       <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Start here</p>
                       <h3 className="mt-3 text-xl font-semibold text-slate-900">Assistant intake</h3>
                       <p className="mt-2 text-sm text-slate-600">Create patient records, add medical history, and begin new cases.</p>
                     </div>
-                    <div className="rounded-3xl border border-slate-200 p-6">
+                    <div className="authi-panel-card">
                       <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Next</p>
                       <h3 className="mt-3 text-xl font-semibold text-slate-900">Doctor workflow</h3>
                       <p className="mt-2 text-sm text-slate-600">Review cases, select conditions, match ICD codes, and finalize claims.</p>
@@ -1179,7 +1183,7 @@ export default function Home() {
                   <div className="mt-10">
                     <button
                       onClick={handleStartOnboarding}
-                      className="rounded-2xl bg-primary-400 px-6 py-3 text-sm font-semibold text-slate-950 hover:bg-primary-500 transition"
+                      className="authi-btn-primary rounded-2xl px-6 py-3 text-sm"
                     >
                       Get started — set up your practice
                     </button>
@@ -1198,17 +1202,19 @@ export default function Home() {
     return (
       <div className="min-h-screen bg-white py-10">
         <div className="max-w-6xl mx-auto px-6">
-          <div className="flex items-center justify-between gap-4 mb-8">
+          <div className="flex items-center justify-between gap-4 mb-8 authi-surface-card px-6 py-5 rounded-2xl">
             <div>
-              <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Assistant dashboard</p>
+              <p className="text-sm tracking-wide authi-gradient-text font-semibold">
+                {assistantName || 'Assistant'}
+              </p>
               <h1 className="mt-3 text-4xl font-semibold text-slate-900">Assistant workspace</h1>
               <p className="mt-3 text-sm text-slate-500">
-                {assistantName ? `${assistantName}` : 'Assistant'} — choose how you want to work with patient records.
+                Choose how you want to work with patient records.
               </p>
             </div>
             <button
               onClick={handleLogout}
-              className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-400 transition"
+              className="authi-btn-secondary px-4 py-3 text-sm shrink-0"
             >
               Back to home
             </button>
@@ -1218,9 +1224,11 @@ export default function Home() {
             <button
               type="button"
               onClick={handleAssistantNewCase}
-              className="rounded-[28px] border border-slate-200 bg-white p-10 text-left transition hover:border-blue-400 shadow-sm"
+              className="authi-choice-card group"
             >
-              <p className="text-sm uppercase tracking-[0.3em] text-blue-600">New patient case</p>
+              <p className="text-sm uppercase tracking-[0.3em] authi-gradient-text font-semibold group-hover:opacity-90">
+                New patient case
+              </p>
               <h2 className="mt-4 text-3xl font-semibold text-slate-900">Create a new patient intake</h2>
               <p className="mt-3 text-sm leading-6 text-slate-500">
                 Add patient details and start a case. The doctor completes the clinical workflow and finalizes the claim.
@@ -1230,9 +1238,11 @@ export default function Home() {
             <button
               type="button"
               onClick={handleAssistantViewRecords}
-              className="rounded-[28px] border border-slate-200 bg-white p-10 text-left transition hover:border-violet-400 shadow-sm"
+              className="authi-choice-card group"
             >
-              <p className="text-sm uppercase tracking-[0.3em] text-violet-600">Patient records</p>
+              <p className="text-sm uppercase tracking-[0.3em] authi-gradient-text font-semibold group-hover:opacity-90">
+                Patient records
+              </p>
               <h2 className="mt-4 text-3xl font-semibold text-slate-900">View and download cases</h2>
               <p className="mt-3 text-sm leading-6 text-slate-500">
                 Browse existing cases. Export claim PDFs or download documents with attachments (ZIP) when ready.
@@ -1248,28 +1258,28 @@ export default function Home() {
     return (
       <div className="min-h-screen bg-white py-10">
         <div className="max-w-4xl mx-auto px-6">
-          <div className="flex items-center justify-between gap-4 mb-8">
+          <div className="flex items-center justify-between gap-4 mb-8 authi-surface-card px-6 py-5 rounded-2xl">
             <div>
-              <p className="text-sm uppercase tracking-[0.3em] text-slate-400">Practice onboarding</p>
+              <p className="text-sm uppercase tracking-[0.3em] authi-gradient-text font-semibold">Practice onboarding</p>
               <h1 className="mt-3 text-4xl font-semibold text-slate-900">Set up your clinic and team</h1>
               <p className="mt-2 text-slate-500">Enter practice details once, then let your assistant and doctor use the system from the same workflow.</p>
             </div>
             <button
               onClick={handleLogout}
-              className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:border-slate-400 transition"
+              className="authi-btn-secondary px-4 py-3 text-sm shrink-0"
             >
               Back to home
             </button>
           </div>
 
-          <form onSubmit={handleOnboardingSubmit} className="rounded-[32px] bg-white border border-slate-200 p-8 shadow-sm">
+          <form onSubmit={handleOnboardingSubmit} className="authi-surface-card rounded-[32px] p-8">
             <div className="grid gap-6">
               <div>
                 <label className="text-sm font-medium text-slate-700">Practice name</label>
                 <input
                   value={onboardingPracticeName}
                   onChange={(e) => setOnboardingPracticeName(e.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`authi-input mt-2 px-4 py-3 ${onboardingErrors.practiceName ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : ''}`}
                   placeholder="Enter your practice name"
                 />
                 {onboardingErrors.practiceName && <p className="mt-2 text-sm text-rose-500">{onboardingErrors.practiceName}</p>}
@@ -1280,7 +1290,7 @@ export default function Home() {
                 <input
                   value={onboardingDoctorName}
                   onChange={(e) => setOnboardingDoctorName(e.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`authi-input mt-2 px-4 py-3 ${onboardingErrors.doctorName ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : ''}`}
                   placeholder="Enter doctor name"
                 />
                 {onboardingErrors.doctorName && <p className="mt-2 text-sm text-rose-500">{onboardingErrors.doctorName}</p>}
@@ -1291,7 +1301,7 @@ export default function Home() {
                 <input
                   value={onboardingAssistantName}
                   onChange={(e) => setOnboardingAssistantName(e.target.value)}
-                  className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-slate-900 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className={`authi-input mt-2 px-4 py-3 ${onboardingErrors.assistantName ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : ''}`}
                   placeholder="e.g. Sarah"
                 />
                 {onboardingErrors.assistantName && <p className="mt-2 text-sm text-rose-500">{onboardingErrors.assistantName}</p>}
@@ -1299,7 +1309,7 @@ export default function Home() {
 
               <button
                 type="submit"
-                className="mt-4 btn-primary"
+                className="authi-btn-primary mt-4 w-full rounded-2xl px-6 py-3 text-sm"
               >
                 Save practice details
               </button>
@@ -1320,6 +1330,8 @@ export default function Home() {
         onViewPatientProfile={handleViewPatientProfile}
         canCreateCase={userRole === 'doctor' || userRole === 'assistant'}
         practiceName={practiceName}
+        doctorName={doctorName}
+        assistantName={assistantName}
         userRole={userRole}
         onLogout={userRole === 'assistant' ? handleBackToAssistantHome : handleLogout}
       />
@@ -1442,10 +1454,10 @@ export default function Home() {
                       <div
                         className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
                           store.currentStep > step.id
-                            ? 'bg-gradient-to-r from-blue-500 to-violet-600 text-white'
+                            ? 'authi-gradient text-white'
                             : store.currentStep === step.id
-                            ? 'bg-gradient-to-r from-blue-500 to-violet-600 text-white'
-                            : 'bg-violet-100 text-violet-500'
+                            ? 'authi-gradient text-white'
+                            : 'bg-indigo-50 text-indigo-400'
                         }`}
                       >
                         {store.currentStep > step.id ? (
@@ -1455,7 +1467,7 @@ export default function Home() {
                         )}
                       </div>
                       <span className={`mt-2 text-sm font-medium text-center ${
-                        store.currentStep >= step.id ? 'text-slate-900' : 'text-violet-400'
+                        store.currentStep >= step.id ? 'text-slate-900' : 'text-indigo-300'
                       }`}>
                         {step.title}
                         {step.id === 4 && store.currentStep === 4 && (
@@ -1469,7 +1481,7 @@ export default function Home() {
                       <div className="relative flex-1 mx-4 flex items-center">
                         <div
                           className={`h-1 w-full rounded-full ${
-                            store.currentStep > step.id ? 'bg-gradient-to-r from-blue-500 to-violet-600' : 'bg-slate-200'
+                            store.currentStep > step.id ? 'authi-gradient' : 'bg-slate-200'
                           }`}
                         />
                         {store.currentStep === step.id + 1 && (
@@ -1802,9 +1814,9 @@ export default function Home() {
   }; // end renderView
 
   return (
-    <div className="flex min-h-screen bg-slate-950">
-      <AppSidebar currentView={currentView} onNavigate={setCurrentView} />
-      <div className="flex-1 ml-60 min-w-0">
+    <div className="flex min-h-screen bg-white">
+      <AppSidebar currentView={currentView} onNavigate={setCurrentView} userRole={userRole} />
+      <div className="flex-1 ml-60 min-w-0 overflow-y-auto">
         {renderView()}
       </div>
     </div>

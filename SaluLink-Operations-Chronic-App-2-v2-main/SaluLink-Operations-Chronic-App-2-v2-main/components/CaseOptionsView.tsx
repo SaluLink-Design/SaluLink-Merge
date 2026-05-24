@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { ArrowLeft, FileText, ClipboardList, Download, Archive, Stethoscope, Activity, Pill, FileSymlink } from 'lucide-react';
 import { PatientCase, ClaimType } from '@/types';
 import { format } from 'date-fns';
@@ -15,54 +16,63 @@ interface CaseOptionsViewProps {
   onSelectClaimType?: (claimType: ClaimType) => void;
 }
 
+const claimTypeLabels: Record<ClaimType, string> = {
+  diagnostic: 'Diagnostic Claim',
+  'ongoing-management': 'Ongoing Management',
+  'medication-report': 'Medication Report',
+  referral: 'Referral',
+};
+
 const doctorClaimTypeOptions: {
   value: ClaimType;
   label: string;
   description: string;
   icon: React.ReactNode;
-  borderHover: string;
-  textColor: string;
 }[] = [
   {
     value: 'diagnostic',
     label: 'Diagnostic Claim',
     description: 'Full clinical workflow — note, condition, ICD, diagnostics, medication.',
     icon: <Stethoscope className="w-5 h-5" />,
-    borderHover: 'hover:border-blue-400',
-    textColor: 'text-blue-600',
   },
   {
     value: 'ongoing-management',
     label: 'Ongoing Management',
     description: 'Monitoring and treatment protocols for an existing condition.',
     icon: <Activity className="w-5 h-5" />,
-    borderHover: 'hover:border-emerald-400',
-    textColor: 'text-emerald-600',
   },
   {
     value: 'medication-report',
     label: 'Medication Report',
     description: 'Follow-up notes and prescriptions for a chronic patient.',
     icon: <Pill className="w-5 h-5" />,
-    borderHover: 'hover:border-violet-400',
-    textColor: 'text-violet-600',
   },
   {
     value: 'referral',
     label: 'Referral',
     description: 'Specialist referral letter for this patient.',
     icon: <FileSymlink className="w-5 h-5" />,
-    borderHover: 'hover:border-orange-400',
-    textColor: 'text-orange-600',
   },
 ];
 
-const claimTypeBadge: Record<ClaimType, { label: string; className: string }> = {
-  'diagnostic': { label: 'Diagnostic Claim', className: 'bg-blue-100 text-blue-700 border border-blue-200' },
-  'ongoing-management': { label: 'Ongoing Management', className: 'bg-emerald-100 text-emerald-700 border border-emerald-200' },
-  'medication-report': { label: 'Medication Report', className: 'bg-violet-100 text-violet-700 border border-violet-200' },
-  'referral': { label: 'Referral', className: 'bg-orange-100 text-orange-700 border border-orange-200' },
-};
+const ClaimTypeBadge = ({ label }: { label: string }) => (
+  <span className="authi-badge-pill px-3 py-1">
+    <span>{label}</span>
+  </span>
+);
+
+const SectionCard = ({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) => (
+  <div className="authi-section-card">
+    <h2 className="text-xs font-semibold authi-gradient-text uppercase tracking-wide mb-4">{title}</h2>
+    {children}
+  </div>
+);
 
 const CaseOptionsView = ({
   caseData,
@@ -78,30 +88,57 @@ const CaseOptionsView = ({
   const isCompleted = caseData.status === 'completed';
   const canExport = isCompleted || (Boolean(caseData.condition) && Boolean(caseData.icdCode));
   const needsClaimType = !readOnly && !caseData.claimType;
-  const ct = caseData.claimType ? claimTypeBadge[caseData.claimType] : null;
+  const claimTypeLabel = caseData.claimType ? claimTypeLabels[caseData.claimType] : null;
+
+  const exportPdfButton = (
+    <button
+      type="button"
+      onClick={onExportPdf}
+      className="authi-btn-secondary w-full px-6 py-4 text-base flex items-center justify-center gap-2"
+    >
+      <Download className="w-5 h-5" />
+      Export as PDF
+    </button>
+  );
+
+  const exportZipButton = (
+    <button
+      type="button"
+      onClick={onExportZip}
+      className="authi-btn-primary w-full px-6 py-4 rounded-2xl text-base flex items-center justify-center gap-2"
+    >
+      <Archive className="w-5 h-5" />
+      Export with Attachments (ZIP)
+    </button>
+  );
 
   return (
-    <div className="fixed inset-0 bg-white z-50 overflow-auto">
+    <div className="min-h-screen bg-white">
       <div className="max-w-4xl mx-auto px-6 py-8">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-xl transition-colors" title="Back">
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+            title="Back"
+          >
             <ArrowLeft className="w-5 h-5 text-slate-500" />
           </button>
           <div className="flex-1">
-            <div className="flex items-center gap-3 mb-1">
+            <p className="text-xs uppercase tracking-[0.2em] authi-gradient-text font-semibold mb-1">
+              {readOnly ? 'Patient record' : 'Claim detail'}
+            </p>
+            <div className="flex flex-wrap items-center gap-3 mb-1">
               <h1 className="text-3xl font-semibold text-slate-900">
                 {readOnly ? 'Patient Record' : 'Claim Detail'}
               </h1>
-              {ct ? (
-                <span className={`inline-block px-3 py-1 rounded-full text-xs font-semibold ${ct.className}`}>
-                  {ct.label}
-                </span>
-              ) : readOnly ? (
-                <span className="inline-block px-3 py-1 rounded-full text-xs font-semibold bg-slate-100 text-slate-500 border border-slate-200">
+              {claimTypeLabel ? (
+                <ClaimTypeBadge label={claimTypeLabel} />
+              ) : (
+                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold authi-tint border border-[rgba(99,102,241,0.25)] text-slate-500">
                   Awaiting doctor
                 </span>
-              ) : null}
+              )}
             </div>
             <p className="text-sm text-slate-500">
               Created {format(new Date(caseData.createdAt), 'MMM dd, yyyy')}
@@ -110,8 +147,7 @@ const CaseOptionsView = ({
         </div>
 
         {/* Patient Info */}
-        <div className="bg-blue-50 border border-blue-200 rounded-2xl p-6 mb-6">
-          <h2 className="text-xs font-semibold text-blue-600 uppercase tracking-wide mb-4">Patient Information</h2>
+        <SectionCard title="Patient Information">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[
               ['Patient Name', caseData.patientName],
@@ -127,12 +163,11 @@ const CaseOptionsView = ({
               </div>
             ))}
           </div>
-        </div>
+        </SectionCard>
 
         {/* Condition */}
         {caseData.condition && (
-          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-6 mb-6">
-            <h2 className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-4">Condition</h2>
+          <SectionCard title="Condition">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <p className="text-xs text-slate-500">Condition</p>
@@ -147,15 +182,12 @@ const CaseOptionsView = ({
                 <p className="text-sm font-semibold text-slate-900 mt-0.5 truncate">{caseData.icdDescription}</p>
               </div>
             </div>
-          </div>
+          </SectionCard>
         )}
 
         {/* Ongoing Treatments */}
         {caseData.ongoingTreatments.length > 0 && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6">
-            <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-4">
-              Ongoing Treatments ({caseData.ongoingTreatments.length})
-            </h2>
+          <SectionCard title={`Ongoing Treatments (${caseData.ongoingTreatments.length})`}>
             <ul className="space-y-2">
               {caseData.ongoingTreatments.map((t, i) => (
                 <li key={i} className="text-sm text-slate-800">
@@ -164,15 +196,12 @@ const CaseOptionsView = ({
                 </li>
               ))}
             </ul>
-          </div>
+          </SectionCard>
         )}
 
         {/* Medications */}
         {caseData.medications.length > 0 && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6">
-            <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-4">
-              Medications ({caseData.medications.length})
-            </h2>
+          <SectionCard title={`Medications (${caseData.medications.length})`}>
             <ul className="space-y-2">
               {caseData.medications.map((m, i) => (
                 <li key={i} className="text-sm text-slate-800">
@@ -181,24 +210,19 @@ const CaseOptionsView = ({
                 </li>
               ))}
             </ul>
-          </div>
+          </SectionCard>
         )}
 
         {/* Medication Reports */}
         {(caseData.medicationReports?.length ?? 0) > 0 && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6">
-            <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-4">
-              Medication Reports ({caseData.medicationReports!.length})
-            </h2>
+          <SectionCard title={`Medication Reports (${caseData.medicationReports!.length})`}>
             <div className="space-y-3">
               {caseData.medicationReports!.map((r, i) => (
-                <div key={r.id ?? i} className="bg-violet-50 border border-violet-200 rounded-xl p-4">
-                  <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-1">
+                <div key={r.id ?? i} className="authi-sub-card">
+                  <p className="text-xs font-semibold authi-gradient-text uppercase tracking-wide mb-1">
                     Report {i + 1}
                   </p>
-                  {r.followUpNotes && (
-                    <p className="text-sm text-slate-800">{r.followUpNotes}</p>
-                  )}
+                  {r.followUpNotes && <p className="text-sm text-slate-800">{r.followUpNotes}</p>}
                   {r.newMedications.length > 0 && (
                     <p className="text-xs text-slate-500 mt-1">
                       +{r.newMedications.length} new medication(s)
@@ -207,13 +231,13 @@ const CaseOptionsView = ({
                 </div>
               ))}
             </div>
-          </div>
+          </SectionCard>
         )}
 
         {/* Doctor claim type selector */}
         {needsClaimType && onSelectClaimType && (
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 mb-6">
-            <h2 className="text-sm font-semibold text-slate-900 mb-1">Select Claim Type</h2>
+          <div className="authi-section-card">
+            <h2 className="text-sm font-semibold authi-gradient-text mb-1">Select Claim Type</h2>
             <p className="text-sm text-slate-500 mb-4">
               Patient details were captured by the assistant. Choose the claim type before starting the workflow.
             </p>
@@ -223,11 +247,11 @@ const CaseOptionsView = ({
                   key={opt.value}
                   type="button"
                   onClick={() => onSelectClaimType(opt.value)}
-                  className={`flex flex-col gap-2 rounded-xl border-2 border-slate-200 p-4 text-left transition-all bg-white ${opt.borderHover}`}
+                  className="authi-action-card"
                 >
-                  <span className={`flex items-center gap-2 font-semibold text-sm ${opt.textColor}`}>
-                    {opt.icon}
-                    {opt.label}
+                  <span className="flex items-center gap-2 font-semibold text-sm">
+                    <span className="text-[#6366f1]">{opt.icon}</span>
+                    <span className="authi-gradient-text">{opt.label}</span>
                   </span>
                   <span className="text-xs leading-relaxed text-slate-500">{opt.description}</span>
                 </button>
@@ -242,22 +266,8 @@ const CaseOptionsView = ({
             <>
               {canExport ? (
                 <>
-                  <button
-                    type="button"
-                    onClick={onExportPdf}
-                    className="w-full px-6 py-4 bg-slate-100 border border-slate-200 text-slate-900 rounded-2xl hover:bg-slate-200 transition font-medium flex items-center justify-center gap-2 text-base"
-                  >
-                    <Download className="w-5 h-5" />
-                    Export as PDF
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onExportZip}
-                    className="w-full px-6 py-4 bg-gradient-to-r from-blue-500 to-violet-600 text-white rounded-2xl hover:from-blue-600 hover:to-violet-700 transition font-semibold flex items-center justify-center gap-2 text-base shadow-md"
-                  >
-                    <Archive className="w-5 h-5" />
-                    Export with Attachments (ZIP)
-                  </button>
+                  {exportPdfButton}
+                  {exportZipButton}
                 </>
               ) : (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
@@ -272,7 +282,7 @@ const CaseOptionsView = ({
               {isNew && !needsClaimType ? (
                 <button
                   onClick={onStartClinicalNote}
-                  className="w-full px-6 py-4 bg-gradient-to-r from-blue-500 to-violet-600 text-white rounded-2xl hover:from-blue-600 hover:to-violet-700 transition font-semibold flex items-center justify-center gap-2 text-base shadow-md"
+                  className="authi-btn-primary w-full px-6 py-4 rounded-2xl text-base flex items-center justify-center gap-2"
                 >
                   <FileText className="w-5 h-5" />
                   Start Workflow
@@ -280,7 +290,7 @@ const CaseOptionsView = ({
               ) : !isCompleted && !needsClaimType ? (
                 <button
                   onClick={onContinueWorkflow}
-                  className="w-full px-6 py-4 bg-gradient-to-r from-blue-500 to-violet-600 text-white rounded-2xl hover:from-blue-600 hover:to-violet-700 transition font-semibold flex items-center justify-center gap-2 text-base shadow-md"
+                  className="authi-btn-primary w-full px-6 py-4 rounded-2xl text-base flex items-center justify-center gap-2"
                 >
                   <ClipboardList className="w-5 h-5" />
                   Continue Workflow
@@ -289,22 +299,8 @@ const CaseOptionsView = ({
 
               {canExport && (
                 <>
-                  <button
-                    type="button"
-                    onClick={onExportPdf}
-                    className="w-full px-6 py-4 bg-slate-100 border border-slate-200 text-slate-900 rounded-2xl hover:bg-slate-200 transition font-medium flex items-center justify-center gap-2 text-base"
-                  >
-                    <Download className="w-5 h-5" />
-                    Export as PDF
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onExportZip}
-                    className="w-full px-6 py-4 bg-gradient-to-r from-blue-500 to-violet-600 text-white rounded-2xl hover:from-blue-600 hover:to-violet-700 transition font-semibold flex items-center justify-center gap-2 text-base shadow-md"
-                  >
-                    <Archive className="w-5 h-5" />
-                    Export with Attachments (ZIP)
-                  </button>
+                  {exportPdfButton}
+                  {exportZipButton}
                 </>
               )}
             </>

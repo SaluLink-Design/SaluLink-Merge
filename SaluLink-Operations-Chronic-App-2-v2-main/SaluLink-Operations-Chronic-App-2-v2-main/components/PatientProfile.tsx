@@ -66,6 +66,19 @@ const caseActionOptions: { claimType: ClaimType; label: string; description: str
 
 const PatientProfile = ({ patientId, cases, onViewClaim, onNewCaseAction, onBack, userRole }: PatientProfileProps) => {
   const [showCaseActions, setShowCaseActions] = useState(false);
+  const isDoctor = userRole === 'doctor';
+  const isAuthiBrand = userRole === 'doctor' || userRole === 'assistant';
+
+  const renderBadge = (label: string, fallbackClassName: string) =>
+    isAuthiBrand ? (
+      <span className="authi-badge-pill">
+        <span>{label}</span>
+      </span>
+    ) : (
+      <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${fallbackClassName}`}>
+        {label}
+      </span>
+    );
 
   const sortedCases = [...cases].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
@@ -89,10 +102,10 @@ const PatientProfile = ({ patientId, cases, onViewClaim, onNewCaseAction, onBack
             <p className="text-xs uppercase tracking-widest text-slate-400">Patient Portfolio</p>
             <h1 className="text-2xl font-semibold text-slate-900">{patient?.patientName ?? patientId}</h1>
           </div>
-          {userRole === 'doctor' && (
+          {isDoctor && (
             <button
               onClick={() => setShowCaseActions((v) => !v)}
-              className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-blue-500 to-violet-600 text-white text-sm font-semibold rounded-xl hover:from-blue-600 hover:to-violet-700 transition shadow-md"
+              className="flex items-center gap-2 px-5 py-2.5 authi-gradient text-white text-sm font-semibold rounded-xl hover:opacity-90 transition shadow-md shadow-[#6366f1]/20"
             >
               + New Case Action
               {showCaseActions ? (
@@ -105,10 +118,10 @@ const PatientProfile = ({ patientId, cases, onViewClaim, onNewCaseAction, onBack
         </div>
 
         {/* Inline case action panel */}
-        {showCaseActions && userRole === 'doctor' && (
-          <div className="border-t border-slate-200 bg-slate-50">
+        {showCaseActions && isDoctor && (
+          <div className="border-t border-[#6366f1]/15 authi-tint">
             <div className="max-w-5xl mx-auto px-6 py-5">
-              <p className="text-xs uppercase tracking-widest text-slate-400 mb-4">
+              <p className="text-xs uppercase tracking-widest authi-gradient-text font-semibold mb-4">
                 Select a case action for {patient?.patientName}
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -120,11 +133,11 @@ const PatientProfile = ({ patientId, cases, onViewClaim, onNewCaseAction, onBack
                       setShowCaseActions(false);
                       onNewCaseAction(patientId, opt.claimType);
                     }}
-                    className={`flex flex-col gap-2 rounded-2xl border-2 p-4 text-left transition-colors bg-white ${opt.borderColor}`}
+                    className="authi-action-card"
                   >
-                    <span className={`flex items-center gap-2 font-semibold text-sm ${opt.textColor}`}>
-                      {opt.icon}
-                      {opt.label}
+                    <span className="flex items-center gap-2 font-semibold text-sm">
+                      <span className="text-[#6366f1]">{opt.icon}</span>
+                      <span className="authi-gradient-text">{opt.label}</span>
                     </span>
                     <span className="text-xs leading-relaxed text-slate-500">{opt.description}</span>
                   </button>
@@ -140,8 +153,14 @@ const PatientProfile = ({ patientId, cases, onViewClaim, onNewCaseAction, onBack
         {patient && (
           <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6 shadow-sm">
             <div className="flex items-center gap-4 mb-5">
-              <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
-                <User className="w-7 h-7 text-blue-400" />
+              <div
+                className={
+                  isAuthiBrand
+                    ? 'authi-avatar-lg w-14 h-14'
+                    : 'w-14 h-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center'
+                }
+              >
+                <User className={`w-7 h-7 ${isAuthiBrand ? 'text-white' : 'text-blue-400'}`} />
               </div>
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">{patient.patientName}</h2>
@@ -189,12 +208,8 @@ const PatientProfile = ({ patientId, cases, onViewClaim, onNewCaseAction, onBack
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1.5">
-                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${ct.className}`}>
-                          {ct.label}
-                        </span>
-                        <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${st.className}`}>
-                          {st.label}
-                        </span>
+                        {renderBadge(ct.label, ct.className)}
+                        {renderBadge(st.label, st.className)}
                       </div>
                       <p className="text-sm font-medium text-slate-900 truncate">
                         {claim.condition || 'No condition recorded'}
@@ -206,10 +221,12 @@ const PatientProfile = ({ patientId, cases, onViewClaim, onNewCaseAction, onBack
                     </div>
                     <button
                       onClick={() => onViewClaim(claim.id)}
-                      className="ml-4 flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                      className={`ml-4 flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                        isAuthiBrand ? 'authi-link' : 'font-medium text-blue-600 hover:bg-blue-50'
+                      }`}
                     >
-                      <Eye className="w-4 h-4" />
-                      View Claim
+                      <Eye className={`w-4 h-4 shrink-0 ${isAuthiBrand ? 'text-[#6366f1]' : ''}`} />
+                      <span className={isAuthiBrand ? 'authi-gradient-text font-medium' : ''}>View Claim</span>
                     </button>
                   </div>
                 );
