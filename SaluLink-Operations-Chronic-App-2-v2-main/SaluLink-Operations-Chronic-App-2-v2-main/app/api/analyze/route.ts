@@ -6,7 +6,7 @@ export const maxDuration = 60;
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { clinical_note } = body;
+    const { clinical_note, benefit_state, workflow_mode } = body;
 
     if (!clinical_note) {
       return NextResponse.json(
@@ -28,7 +28,11 @@ export async function POST(request: NextRequest) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ clinical_note }),
+        body: JSON.stringify({
+          clinical_note,
+          benefit_state: benefit_state ?? 'unregistered',
+          workflow_mode: workflow_mode ?? 'registration',
+        }),
         signal: controller.signal,
       });
 

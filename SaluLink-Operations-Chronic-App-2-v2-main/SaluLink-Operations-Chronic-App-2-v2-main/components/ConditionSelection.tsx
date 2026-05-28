@@ -23,7 +23,7 @@ const ConditionSelection = ({ matchedConditions, onSelect, selectedCondition }: 
           <Sparkles className="w-5 h-5" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">Conditions identified in Authi</h2>
+          <h2 className="text-2xl font-bold text-slate-900">Conditions identified by Authi</h2>
           <p className="text-sm text-slate-800">
             Select the chronic condition that best matches the clinical note
           </p>

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ArrowLeft, Save, Stethoscope, Activity, Pill } from 'lucide-react';
-import { MedicalPlan, ClaimType } from '@/types';
+import { MedicalPlan, ClaimType, MedicalScheme, CibEnrollmentStatus } from '@/types';
 
 interface PatientInfoFormProps {
   onSave: (patientInfo: PatientInfo) => void;
@@ -20,30 +20,23 @@ export interface PatientInfo {
   patientEmail: string;
   patientPhone: string;
   plan: MedicalPlan;
+  medicalScheme: MedicalScheme;
+  cibEnrollmentStatus: CibEnrollmentStatus;
   claimType?: ClaimType;
 }
 
-const claimTypeOptions: { value: ClaimType; label: string; description: string; icon: React.ReactNode; color: string }[] = [
-  {
-    value: 'diagnostic',
-    label: 'Diagnostic Claim',
-    description: 'Full 6-step clinical workflow — clinical note, condition, ICD code, diagnostics, medication.',
-    icon: <Stethoscope className="w-5 h-5" />,
-    color: 'blue',
-  },
+const registeredClaimTypeOptions: { value: ClaimType; label: string; description: string; icon: React.ReactNode }[] = [
   {
     value: 'ongoing-management',
     label: 'Ongoing Management',
-    description: 'Monitoring and treatment protocols for an existing condition.',
+    description: 'Monitoring and treatment protocols for an existing chronic condition.',
     icon: <Activity className="w-5 h-5" />,
-    color: 'emerald',
   },
   {
     value: 'medication-report',
     label: 'Medication Report',
     description: 'Follow-up notes and new prescriptions for a registered chronic patient.',
     icon: <Pill className="w-5 h-5" />,
-    color: 'violet',
   },
 ];
 
@@ -63,10 +56,15 @@ const PatientInfoForm = ({
     patientEmail: prefillData?.patientEmail ?? '',
     patientPhone: prefillData?.patientPhone ?? '',
     plan: prefillData?.plan ?? 'Core',
+    medicalScheme: prefillData?.medicalScheme ?? 'discovery',
+    cibEnrollmentStatus: prefillData?.cibEnrollmentStatus ?? 'unregistered',
     claimType: prefillData?.claimType,
   });
 
   const [errors, setErrors] = useState<Partial<Record<keyof PatientInfo, string>>>({});
+
+  const isUnregistered = formData.cibEnrollmentStatus === 'unregistered';
+  const showClaimTypePicker = showClaimType && !isUnregistered;
 
   const validateForm = (): boolean => {
     const newErrors: Partial<Record<keyof PatientInfo, string>> = {};
@@ -80,16 +78,27 @@ const PatientInfoForm = ({
     }
     if (!formData.patientPhone.trim()) newErrors.patientPhone = 'Phone number is required';
     if (!formData.plan) newErrors.plan = 'Medical plan is required';
-    if (showClaimType && !formData.claimType) newErrors.claimType = 'Claim type is required';
+    if (!formData.medicalScheme) newErrors.medicalScheme = 'Medical scheme is required';
+    if (!formData.cibEnrollmentStatus) newErrors.cibEnrollmentStatus = 'Chronic benefit status is required';
+    if (formData.medicalScheme === 'gems') {
+      newErrors.medicalScheme = 'GEMS support is coming soon — select Discovery Health for now';
+    }
+    if (showClaimTypePicker && !formData.claimType) newErrors.claimType = 'Claim type is required';
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleChange = (field: keyof PatientInfo, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === 'cibEnrollmentStatus' && value === 'unregistered') {
+        next.claimType = undefined;
+      }
+      return next;
+    });
     if (errors[field]) {
-      setErrors(prev => {
+      setErrors((prev) => {
         const newErrors = { ...prev };
         delete newErrors[field];
         return newErrors;
@@ -100,14 +109,17 @@ const PatientInfoForm = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (validateForm()) {
-      onSave(formData);
+      const payload: PatientInfo = {
+        ...formData,
+        claimType: isUnregistered ? undefined : formData.claimType,
+      };
+      onSave(payload);
     }
   };
 
   return (
     <div className="min-h-screen bg-white">
       <div className="max-w-2xl mx-auto px-6 py-8">
-        {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <button
             onClick={onCancel}
@@ -121,17 +133,82 @@ const PatientInfoForm = ({
               {showClaimType ? 'New Case — Patient Information' : 'New Patient Intake'}
             </h1>
             <p className="text-sm text-slate-500 mt-1">
-              {showClaimType
-                ? 'Enter patient details and select the claim type'
-                : 'Enter patient details for the doctor to complete the claim'}
+              Capture scheme and chronic benefit status — this sets the clinical workflow from day one.
             </p>
           </div>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="authi-surface-card rounded-2xl p-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Patient Name */}
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-3">Medical scheme *</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleChange('medicalScheme', 'discovery')}
+                  disabled={isLoading}
+                  className={
+                    formData.medicalScheme === 'discovery'
+                      ? 'authi-action-card border-[#6366f1]/60 authi-tint ring-2 ring-[#6366f1]/25 text-left'
+                      : 'authi-action-card text-left'
+                  }
+                >
+                  <span className="font-semibold text-slate-900">Discovery Health</span>
+                  <span className="text-xs text-slate-500 block mt-1">Active — tailored baskets, formulary & PMB rules</span>
+                </button>
+                <button
+                  type="button"
+                  disabled
+                  className="authi-action-card text-left opacity-60 cursor-not-allowed relative"
+                >
+                  <span className="font-semibold text-slate-700">GEMS</span>
+                  <span className="absolute top-3 right-3 text-xs px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 font-medium">
+                    Coming soon
+                  </span>
+                  <span className="text-xs text-slate-500 block mt-1">Scheme data not yet available</span>
+                </button>
+              </div>
+              {errors.medicalScheme && (
+                <p className="text-red-500 text-sm mt-1">{errors.medicalScheme}</p>
+              )}
+            </div>
+
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-3">Chronic Illness Benefit (CIB) status *</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleChange('cibEnrollmentStatus', 'unregistered')}
+                  disabled={isLoading}
+                  className={
+                    formData.cibEnrollmentStatus === 'unregistered'
+                      ? 'authi-action-card border-amber-300 bg-amber-50/80 ring-2 ring-amber-200 text-left'
+                      : 'authi-action-card text-left'
+                  }
+                >
+                  <span className="font-semibold text-amber-900">Not registered on CIB</span>
+                  <span className="text-xs text-amber-800 block mt-1">
+                    Diagnostic workflow — gather evidence, then submit CIB application
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleChange('cibEnrollmentStatus', 'registered')}
+                  disabled={isLoading}
+                  className={
+                    formData.cibEnrollmentStatus === 'registered'
+                      ? 'authi-action-card border-emerald-300 bg-emerald-50/80 ring-2 ring-emerald-200 text-left'
+                      : 'authi-action-card text-left'
+                  }
+                >
+                  <span className="font-semibold text-emerald-900">Registered on CIB</span>
+                  <span className="text-xs text-emerald-800 block mt-1">
+                    Chronic management — ongoing care, medication reports, referrals
+                  </span>
+                </button>
+              </div>
+            </div>
+
             <div>
               <label htmlFor="patientName" className="block text-sm font-medium text-slate-700 mb-2">
                 Patient Name *
@@ -141,14 +218,13 @@ const PatientInfoForm = ({
                 id="patientName"
                 value={formData.patientName}
                 onChange={(e) => handleChange('patientName', e.target.value)}
-                className={`authi-input px-4 py-2.5 ${errors.patientName ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : ''}`}
+                className={`authi-input px-4 py-2.5 ${errors.patientName ? 'border-red-400' : ''}`}
                 placeholder="e.g., John Smith"
                 disabled={isLoading}
               />
               {errors.patientName && <p className="text-red-500 text-sm mt-1">{errors.patientName}</p>}
             </div>
 
-            {/* Patient ID */}
             <div>
               <label htmlFor="patientId" className="block text-sm font-medium text-slate-700 mb-2">
                 Patient ID Number *
@@ -158,14 +234,13 @@ const PatientInfoForm = ({
                 id="patientId"
                 value={formData.patientId}
                 onChange={(e) => handleChange('patientId', e.target.value)}
-                className={`authi-input px-4 py-2.5 ${errors.patientId ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : ''}`}
+                className={`authi-input px-4 py-2.5 ${errors.patientId ? 'border-red-400' : ''}`}
                 placeholder="e.g., P12345"
                 disabled={isLoading}
               />
               {errors.patientId && <p className="text-red-500 text-sm mt-1">{errors.patientId}</p>}
             </div>
 
-            {/* Medical Aid Number */}
             <div>
               <label htmlFor="medicalAidNumber" className="block text-sm font-medium text-slate-700 mb-2">
                 Medical Aid Number *
@@ -175,14 +250,15 @@ const PatientInfoForm = ({
                 id="medicalAidNumber"
                 value={formData.medicalAidNumber}
                 onChange={(e) => handleChange('medicalAidNumber', e.target.value)}
-                className={`authi-input px-4 py-2.5 ${errors.medicalAidNumber ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : ''}`}
+                className={`authi-input px-4 py-2.5 ${errors.medicalAidNumber ? 'border-red-400' : ''}`}
                 placeholder="e.g., MA123456"
                 disabled={isLoading}
               />
-              {errors.medicalAidNumber && <p className="text-red-500 text-sm mt-1">{errors.medicalAidNumber}</p>}
+              {errors.medicalAidNumber && (
+                <p className="text-red-500 text-sm mt-1">{errors.medicalAidNumber}</p>
+              )}
             </div>
 
-            {/* Patient Email */}
             <div>
               <label htmlFor="patientEmail" className="block text-sm font-medium text-slate-700 mb-2">
                 Patient Email *
@@ -192,14 +268,13 @@ const PatientInfoForm = ({
                 id="patientEmail"
                 value={formData.patientEmail}
                 onChange={(e) => handleChange('patientEmail', e.target.value)}
-                className={`authi-input px-4 py-2.5 ${errors.patientEmail ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : ''}`}
+                className={`authi-input px-4 py-2.5 ${errors.patientEmail ? 'border-red-400' : ''}`}
                 placeholder="e.g., john@example.com"
                 disabled={isLoading}
               />
               {errors.patientEmail && <p className="text-red-500 text-sm mt-1">{errors.patientEmail}</p>}
             </div>
 
-            {/* Plan Selection */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-2">Medical Aid Plan *</label>
               <div className="flex flex-wrap gap-2">
@@ -208,19 +283,15 @@ const PatientInfoForm = ({
                     type="button"
                     key={plan}
                     onClick={() => handleChange('plan', plan)}
-                    className={
-                      formData.plan === plan ? 'authi-plan-chip-selected' : 'authi-plan-chip'
-                    }
+                    className={formData.plan === plan ? 'authi-plan-chip-selected' : 'authi-plan-chip'}
                     disabled={isLoading}
                   >
-                    {formData.plan === plan ? <span>{plan}</span> : plan}
+                    {plan}
                   </button>
                 ))}
               </div>
-              {errors.plan && <p className="text-red-500 text-sm mt-1">{errors.plan}</p>}
             </div>
 
-            {/* Phone Number */}
             <div>
               <label htmlFor="patientPhone" className="block text-sm font-medium text-slate-700 mb-2">
                 Phone Number *
@@ -230,18 +301,28 @@ const PatientInfoForm = ({
                 id="patientPhone"
                 value={formData.patientPhone}
                 onChange={(e) => handleChange('patientPhone', e.target.value)}
-                className={`authi-input px-4 py-2.5 ${errors.patientPhone ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : ''}`}
-                placeholder="e.g., +1 (555) 123-4567"
+                className={`authi-input px-4 py-2.5 ${errors.patientPhone ? 'border-red-400' : ''}`}
+                placeholder="e.g., +27 XX XXX XXXX"
                 disabled={isLoading}
               />
               {errors.patientPhone && <p className="text-red-500 text-sm mt-1">{errors.patientPhone}</p>}
             </div>
 
-            {showClaimType && (
+            {isUnregistered && (
+              <div className="md:col-span-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-start gap-2">
+                <Stethoscope className="w-5 h-5 shrink-0 mt-0.5" />
+                <p>
+                  Unregistered patients will enter the <strong>diagnostic evidence workflow</strong> only.
+                  The doctor will complete tests, review findings, prescribe if needed, then submit the CIB application.
+                </p>
+              </div>
+            )}
+
+            {showClaimTypePicker && (
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-slate-700 mb-3">Claim Type *</label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {claimTypeOptions.map((opt) => {
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {registeredClaimTypeOptions.map((opt) => {
                     const selected = formData.claimType === opt.value;
                     return (
                       <button
@@ -271,14 +352,8 @@ const PatientInfoForm = ({
             )}
           </div>
 
-          {/* Buttons */}
           <div className="flex gap-4 mt-8 pt-6 border-t border-slate-200">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="authi-btn-secondary flex-1 px-4 py-3 text-sm"
-              disabled={isLoading}
-            >
+            <button type="button" onClick={onCancel} className="authi-btn-secondary flex-1 px-4 py-3 text-sm" disabled={isLoading}>
               Cancel
             </button>
             <button

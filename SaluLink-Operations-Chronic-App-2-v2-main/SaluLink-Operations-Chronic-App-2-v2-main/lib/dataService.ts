@@ -1,5 +1,5 @@
 import Papa from 'papaparse'; // TODO: Ensure 'papaparse' is installed with `npm install papaparse` and typing with `npm install --save-dev @types/papaparse`
-import type { ChronicCondition, MedicineItem, TreatmentBasketItem, MedicalPlan } from '@/types';
+import type { ChronicCondition, MedicineItem, TreatmentBasketItem, MedicalPlan, MedicalScheme } from '@/types';
 
 // Parse CSV data from public folder
 export class DataService {
@@ -7,16 +7,33 @@ export class DataService {
   private static medicines: MedicineItem[] = [];
   private static treatmentBasket: TreatmentBasketItem[] = [];
   private static initialized = false;
+  static activeScheme: MedicalScheme = 'discovery';
+
+  static isSchemeDataAvailable(): boolean {
+    return this.activeScheme === 'discovery' && this.initialized;
+  }
+
+  static setActiveScheme(scheme: MedicalScheme) {
+    this.activeScheme = scheme;
+    if (scheme !== 'discovery') {
+      this.initialized = false;
+    }
+  }
 
   /**
    * Parse plan restrictions from medication name/description
    * Examples:
    * - "(Only Executive and Comprehensive plans)" -> { type: 'only', plans: ['Executive', 'Comprehensive'] }
-   * - "(Not available on KeyCare plans)" -> { type: 'not_available', plans: ['Core'] }
+   * - "(Not available on KeyCare plans)" -> ignored in this app (no KeyCare plan option)
    */
+  private static sanitizeMedicationLabel(medicineNameAndStrength: string): string {
+    return medicineNameAndStrength
+      .replace(/\s*\(Not\s+available\s+on\s+KeyCare\s+plans?\)\s*/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   private static parsePlanRestriction(medicineNameAndStrength: string): MedicineItem['planRestriction'] {
-    const text = medicineNameAndStrength.toLowerCase();
-    
     // Check for "Only ... plans" restriction
     const onlyMatch = medicineNameAndStrength.match(/\(Only\s+(.+?)\s+plans?\)/i);
     if (onlyMatch) {
@@ -42,12 +59,14 @@ export class DataService {
       const planText = notAvailableMatch[1].toLowerCase();
       const plans: MedicalPlan[] = [];
       
-      // KeyCare is mapped to Core plan
-      if (planText.includes('keycare') || planText.includes('core')) plans.push('Core');
+      // Ignore KeyCare restrictions since KeyCare is not a selectable plan in this app.
+      if (planText.includes('core')) plans.push('Core');
       if (planText.includes('priority')) plans.push('Priority');
       if (planText.includes('saver')) plans.push('Saver');
       if (planText.includes('executive')) plans.push('Executive');
       if (planText.includes('comprehensive')) plans.push('Comprehensive');
+
+      if (plans.length === 0) return undefined;
       
       return {
         type: 'not_available',
@@ -78,7 +97,15 @@ export class DataService {
     return true;
   }
 
-  static async initialize() {
+  static async initialize(scheme: MedicalScheme = this.activeScheme) {
+    this.activeScheme = scheme;
+    if (scheme !== 'discovery') {
+      this.initialized = true;
+      this.chronicConditions = [];
+      this.medicines = [];
+      this.treatmentBasket = [];
+      return;
+    }
     if (this.initialized) return;
 
     try {
@@ -106,7 +133,8 @@ export class DataService {
       this.medicines = medicineParsed.data
         .filter(row => row['CHRONIC DISEASE LIST CONDITION'])
         .map(row => {
-          const medicineNameAndStrength = row['MEDICINE NAME AND STRENGTH'] || '';
+          const rawMedicineNameAndStrength = row['MEDICINE NAME AND STRENGTH'] || '';
+          const medicineNameAndStrength = this.sanitizeMedicationLabel(rawMedicineNameAndStrength);
           return {
             condition: row['CHRONIC DISEASE LIST CONDITION'],
             cdaCore: row['CDA FOR CORE, PRIORITY AND SAVER PLANS'] || '',
@@ -114,7 +142,8 @@ export class DataService {
             medicineClass: row['MEDICINE CLASS'] || '',
             activeIngredient: row['ACTIVE INGREDIENT'] || '',
             medicineNameAndStrength,
-            planRestriction: this.parsePlanRestriction(medicineNameAndStrength),
+            formularyStatus: 'listed',
+            planRestriction: this.parsePlanRestriction(rawMedicineNameAndStrength),
           };
         });
 

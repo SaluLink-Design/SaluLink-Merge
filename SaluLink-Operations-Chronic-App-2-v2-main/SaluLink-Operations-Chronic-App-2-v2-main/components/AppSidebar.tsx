@@ -9,6 +9,7 @@ type AppView =
   | 'dashboard'
   | 'patient-info'
   | 'patient-profile'
+  | 'patient-record'
   | 'case-options'
   | 'workflow';
 
@@ -36,8 +37,8 @@ const navItems: NavItem[] = [
   },
   {
     label: 'Reports',
-    activeViews: [],
-    targetView: null,
+    activeViews: ['patient-record'],
+    targetView: 'patient-record',
   },
   {
     label: 'Settings',
@@ -49,39 +50,53 @@ const navItems: NavItem[] = [
 interface AppSidebarProps {
   currentView: AppView;
   onNavigate: (view: AppView) => void;
+  onReportsNavigate?: () => void;
   userRole?: string | null;
 }
 
-const AppSidebar = ({ currentView, onNavigate, userRole }: AppSidebarProps) => {
-  const isDoctorWorkspace = userRole === 'doctor';
+const WORKSPACE_VIEWS: AppView[] = [
+  'dashboard',
+  'workflow',
+  'patient-profile',
+  'patient-record',
+  'case-options',
+  'patient-info',
+  'assistant-home',
+];
+
+const AppSidebar = ({ currentView, onNavigate, onReportsNavigate, userRole }: AppSidebarProps) => {
+  const inActiveWorkspace =
+    Boolean(userRole) &&
+    currentView !== 'landing' &&
+    currentView !== 'onboarding' &&
+    WORKSPACE_VIEWS.includes(currentView);
 
   return (
     <aside className="fixed top-0 left-0 h-full w-60 bg-[#08080f] border-r border-white/5 flex flex-col z-30 shrink-0">
-      {/* SaluLink logo — gradient Link in doctor workspace; flat cyan elsewhere */}
+      {/* SaluLink logo — Authi gradient "Link" inside doctor/assistant workspace only */}
       <div className="px-6 pt-7 pb-1">
         <p className="text-[22px] font-bold tracking-tight leading-none">
           <span className="text-white">Salu</span>
-          {isDoctorWorkspace ? (
-            <span className="brand-link-gradient-text">Link</span>
-          ) : (
-            <span className="text-[#38b6ff]">Link</span>
-          )}
+          <span className={inActiveWorkspace ? 'brand-link-gradient-text' : 'brand-link-text'}>
+            Link
+          </span>
         </p>
       </div>
 
       {/* Authi orb + powered by */}
       <div className="flex flex-col items-center px-4 py-6 mt-2">
-        <div className="relative w-[90px] h-[90px]">
+        <div className="relative w-[90px] h-[90px] authi-orb-bounce">
           <Image
             src="/salulink-orb.png"
             alt="Authi AI"
             fill
-            className="object-contain drop-shadow-[0_0_28px_rgba(139,92,246,0.55)]"
+            className="object-contain drop-shadow-[0_0_28px_rgba(56,182,255,0.5)]"
             priority
           />
         </div>
-        <p className="mt-3 text-[13px] font-semibold brand-link-gradient-text tracking-wide">
-          Powered by Authi
+        <p className="mt-3 text-[13px] font-semibold tracking-wide">
+          <span className="text-white">Powered by </span>
+          <span className="brand-link-gradient-text">Authi</span>
         </p>
       </div>
 
@@ -99,8 +114,14 @@ const AppSidebar = ({ currentView, onNavigate, userRole }: AppSidebarProps) => {
             <div key={item.label}>
               <button
                 type="button"
-                onClick={() => item.targetView && onNavigate(item.targetView)}
-                disabled={!item.targetView}
+                onClick={() => {
+                  if (item.label === 'Reports' && onReportsNavigate) {
+                    onReportsNavigate();
+                    return;
+                  }
+                  if (item.targetView) onNavigate(item.targetView);
+                }}
+                disabled={!item.targetView && item.label !== 'Reports'}
                 className={
                   isActive
                     ? 'w-full flex items-center px-4 py-2.5 rounded-xl text-sm font-semibold text-white authi-gradient shadow-lg shadow-[#6366f1]/30 hover:opacity-90'

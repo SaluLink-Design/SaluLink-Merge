@@ -1,20 +1,25 @@
 'use client';
 
-import { MedicationReport, PatientCase } from '@/types';
+import { MedicationReport, BenefitState, CibRecord, TreatmentItem, SelectedMedication } from '@/types';
 import { FileText, CheckCircle, Pill, Stethoscope, FileBarChart, ClipboardList } from 'lucide-react';
 import { format } from 'date-fns';
+import { benefitStateLabel, fundingSourceLabel, isWorkflowA } from '@/lib/benefitState';
+import FundingSourceBadge from '@/components/FundingSourceBadge';
 
 interface FinalClaimSummaryProps {
   clinicalNote: string;
   selectedCondition: string;
   selectedIcdCode: string;
   selectedIcdDescription: string;
-  diagnosticTreatments: any[];
-  ongoingTreatments: any[];
-  medications: any[];
+  diagnosticTreatments: TreatmentItem[];
+  ongoingTreatments: TreatmentItem[];
+  medications: SelectedMedication[];
   medicationNote: string;
   medicationReports?: MedicationReport[];
   selectedPlan: string;
+  benefitState?: BenefitState | null;
+  diagnosisDate?: string;
+  cibRecords?: CibRecord[];
   onConfirm: () => void;
   onBack: () => void;
   confirmLabel?: string;
@@ -31,10 +36,14 @@ const FinalClaimSummary = ({
   medicationNote,
   medicationReports = [],
   selectedPlan,
+  benefitState,
+  diagnosisDate,
+  cibRecords = [],
   onConfirm,
   onBack,
   confirmLabel = 'Confirm and Save Claim',
 }: FinalClaimSummaryProps) => {
+  const workflowA = isWorkflowA(benefitState);
   return (
     <div className="space-y-6">
       <div className="card">
@@ -48,14 +57,24 @@ const FinalClaimSummary = ({
           </div>
         </div>
 
-        <div className="brand-info-box border-2 mb-6">
+        <div className={`border-2 rounded-xl p-4 mb-6 ${workflowA ? 'brand-info-box' : 'bg-emerald-50 border-emerald-200'}`}>
           <div className="flex items-start gap-3">
-            <CheckCircle className="w-5 h-5 text-violet-600 mt-0.5 flex-shrink-0" />
+            <CheckCircle className={`w-5 h-5 mt-0.5 flex-shrink-0 ${workflowA ? 'text-violet-600' : 'text-emerald-600'}`} />
             <div>
-              <p className="font-medium text-violet-800">Ready for Submission</p>
-              <p className="text-sm text-violet-700 mt-1">
-                All required components have been completed. Review the information below and confirm to finalize the claim.
+              <p className={`font-medium ${workflowA ? 'text-violet-800' : 'text-emerald-800'}`}>
+                {workflowA ? 'Provisional claim — CIB pathway pending' : 'Chronic management claim'}
               </p>
+              <p className={`text-sm mt-1 ${workflowA ? 'text-violet-700' : 'text-emerald-700'}`}>
+                {workflowA
+                  ? 'Medicines may fund from day-to-day until Discovery approves CIB. Retain diagnosis date and prescription evidence for retrospective linking.'
+                  : 'Expected funding via Chronic Illness Benefit where formulary and disease-modifying rules are met.'}
+              </p>
+              {benefitState && (
+                <p className="text-xs mt-2 font-medium text-slate-600">
+                  Benefit state: {benefitStateLabel[benefitState]}
+                  {diagnosisDate ? ` · Diagnosis date: ${diagnosisDate}` : ''}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -174,12 +193,41 @@ const FinalClaimSummary = ({
                   <div key={index} className="bg-white border border-slate-200 rounded-xl p-4">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <p className="font-medium text-slate-900">{med.medicineNameAndStrength}</p>
-                        <p className="text-sm text-slate-500 mt-1">{med.activeIngredient}</p>
+                        <p className="font-medium text-slate-900">{med.activeIngredient || 'Unknown ingredient'}</p>
+                        <p className="text-sm text-slate-500 mt-1">Brand: {med.medicineNameAndStrength}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">Class: {med.medicineClass}</p>
+                        <p className="text-xs text-slate-600 mt-1">{med.coverageNote}</p>
+                        {med.fundingSource && (
+                          <p className="text-xs text-slate-600 mt-1">
+                            {fundingSourceLabel[med.fundingSource]}
+                          </p>
+                        )}
+                        {med.fundingLagWarning && (
+                          <p className="text-xs text-amber-700 mt-1">{med.fundingLagWarning}</p>
+                        )}
+                        {med.unlistedClinicalRationale && (
+                          <p className="text-xs text-slate-500 mt-1">
+                            Clinical rationale: {med.unlistedClinicalRationale}
+                          </p>
+                        )}
                       </div>
-                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 border border-emerald-200">
-                        CDA: {med.cdaAmount}
-                      </span>
+                      <div className="flex flex-col items-end gap-1">
+                        {med.fundingSource && (
+                          <FundingSourceBadge source={med.fundingSource} compact />
+                        )}
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 border border-emerald-200">
+                          CDA: {med.cdaAmount}
+                        </span>
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                            med.formularyStatus === 'unlisted'
+                              ? 'bg-amber-100 text-amber-700 border border-amber-200'
+                              : 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                          }`}
+                        >
+                          {med.formularyStatus === 'unlisted' ? 'Cap-limited' : 'Fully covered'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -218,7 +266,7 @@ const FinalClaimSummary = ({
                         <ul className="mt-2 space-y-1">
                           {report.newMedications.map((med, medIndex) => (
                             <li key={medIndex} className="text-sm text-slate-700">
-                              {med.medicineNameAndStrength} ({med.activeIngredient})
+                              {med.activeIngredient} - {med.medicineNameAndStrength}
                             </li>
                           ))}
                         </ul>

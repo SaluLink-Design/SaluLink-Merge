@@ -1,10 +1,18 @@
 'use client';
 
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { DataService } from '@/lib/dataService';
 import { PDFExportService } from '@/lib/pdfExport';
-import { saveCaseToDatabase } from '@/lib/caseService';
+import { saveCaseToDatabase, updateCaseDeliveryStatus } from '@/lib/caseService';
+import { useAuth } from '@/lib/AuthContext';
+import { getDoctorDisplayName } from '@/lib/workspaceService';
+import { fetchEmailDeliveryConfigured } from '@/lib/email/checkEmailDelivery';
+import { deliverClaimToPatient } from '@/lib/patientDelivery';
+import AuthLanding from '@/components/auth/AuthLanding';
+import DoctorOnboardingForm from '@/components/auth/DoctorOnboardingForm';
+import InviteAssistantPanel from '@/components/auth/InviteAssistantPanel';
+import ClaimCompletionModal, { type ClaimCompletionAction } from '@/components/ClaimCompletionModal';
 import { Save, CheckCircle, ArrowLeft, ArrowRight, ChevronRight } from 'lucide-react';
 
 // Components
@@ -23,16 +31,51 @@ import Dashboard from '@/components/Dashboard';
 import PatientInfoForm, { PatientInfo } from '@/components/PatientInfoForm';
 import CaseOptionsView from '@/components/CaseOptionsView';
 import PatientProfile from '@/components/PatientProfile';
-import { MatchedCondition, PatientCase, SelectedMedication, ClaimType } from '@/types';
+import CibApplicationAssistant from '@/components/CibApplicationAssistant';
+import DiagnosticEvidenceReview from '@/components/DiagnosticEvidenceReview';
+import CibRegistrationStep from '@/components/CibRegistrationStep';
+import { MatchedCondition, PatientCase, SelectedMedication, ClaimType, BenefitState, CibRecord } from '@/types';
+import { normalizeSelectedMedication } from '@/lib/medicationCoverage';
+import {
+  benefitStateLabel,
+  buildDefaultCibRecord,
+  enrollmentToBenefitState,
+  getCibRecordForCondition,
+  getPatientCibRecords,
+  getPatientEnrollmentStatus,
+  getPatientMedicalScheme,
+  isWorkflowA,
+  isWorkflowB,
+} from '@/lib/benefitState';
+import { canProceedFromEvidenceReview } from '@/lib/diagnosticEvidence';
 import type { PatientExportData } from '@/lib/patientExport';
 import AppSidebar from '@/components/AppSidebar';
+import PatientRecordPicker from '@/components/PatientRecordPicker';
+import PatientRecordView from '@/components/PatientRecordView';
+import { normalizePatientCase } from '@/lib/normalizePatientCase';
+import {
+  createCaseId,
+  createProfileId,
+  filterCasesByProfile,
+  resolveProfileId,
+  validateNewPatientIntake,
+} from '@/lib/patientPortfolio';
 
 type UserRole = 'assistant' | 'doctor';
 
-type AppView = 'landing' | 'onboarding' | 'assistant-home' | 'dashboard' | 'patient-info' | 'patient-profile' | 'case-options' | 'workflow';
+type AppView =
+  | 'landing'
+  | 'onboarding'
+  | 'assistant-home'
+  | 'dashboard'
+  | 'patient-info'
+  | 'patient-profile'
+  | 'patient-record'
+  | 'case-options'
+  | 'workflow';
 
-const deduplicateMedications = (medications: any[]) => {
-  return medications.reduce((acc: any[], current) => {
+const deduplicateMedications = (medications: SelectedMedication[]): SelectedMedication[] => {
+  return medications.map(normalizeSelectedMedication).reduce((acc: SelectedMedication[], current) => {
     const duplicate = acc.find(item =>
       item.medicineNameAndStrength === current.medicineNameAndStrength
     );
@@ -45,11 +88,14 @@ const deduplicateMedications = (medications: any[]) => {
 
 export default function Home() {
   const store = useStore();
+  const auth = useAuth();
   const [isInitialized, setIsInitialized] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [matchedConditions, setMatchedConditions] = useState<MatchedCondition[]>([]);
   const [currentClaimType, setCurrentClaimType] = useState<ClaimType>('diagnostic');
-  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showClaimCompletion, setShowClaimCompletion] = useState(false);
+  const [emailDeliveryConfigured, setEmailDeliveryConfigured] = useState(false);
+  const [claimCompletionSource, setClaimCompletionSource] = useState<'cib' | 'final'>('final');
   const [patientName, setPatientName] = useState('');
   const [patientId, setPatientId] = useState('');
   const [patientEmail, setPatientEmail] = useState('');
@@ -57,95 +103,103 @@ export default function Home() {
   const [medicalAidNumber, setMedicalAidNumber] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showPatientExport, setShowPatientExport] = useState(false);
-  
-  const [practiceName, setPracticeName] = useState('');
-  const [doctorName, setDoctorName] = useState('');
-  const [assistantName, setAssistantName] = useState('');
+
+  const practiceName = auth.workspace?.name ?? '';
+  const doctorName = getDoctorDisplayName(auth.profile);
+  const assistantMember = auth.members.find((m) => m.role === 'assistant');
+  const assistantName = assistantMember?.displayName || 'Assistant';
+  const hasActiveAssistant = auth.members.some(
+    (m) => m.role === 'assistant' && m.status === 'active'
+  );
+  const hasPendingAssistantInvite = auth.invites.some((i) => i.status === 'pending');
+  const assistantWorkspaceReady = hasActiveAssistant || hasPendingAssistantInvite;
   const [userRole, setUserRole] = useState<UserRole | null>(null);
-  const [onboardingPracticeName, setOnboardingPracticeName] = useState('');
-  const [onboardingDoctorName, setOnboardingDoctorName] = useState('');
-  const [onboardingAssistantName, setOnboardingAssistantName] = useState('');
-  const [onboardingErrors, setOnboardingErrors] = useState<Partial<Record<'practiceName' | 'doctorName' | 'assistantName', string>>>({});
-  const [landingRole, setLandingRole] = useState<UserRole>('assistant');
+  const [landingRole, setLandingRole] = useState<UserRole>('doctor');
 
   // View state
   const [currentView, setCurrentView] = useState<AppView>('landing');
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [currentCaseForView, setCurrentCaseForView] = useState<PatientCase | null>(null);
-  const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const [recordProfileId, setRecordProfileId] = useState<string | null>(null);
   // Prefill data for "New Claim for this Patient"
   const [patientInfoPrefill, setPatientInfoPrefill] = useState<Partial<PatientInfo> | undefined>(undefined);
 
+  const [showCibAssistant, setShowCibAssistant] = useState(false);
+  const [isCibSubmitting, setIsCibSubmitting] = useState(false);
+  const [cibAssistantCondition, setCibAssistantCondition] = useState('');
+
   useEffect(() => {
     const init = async () => {
-      await DataService.initialize();
+      const scheme =
+        (store.currentCaseId &&
+          store.cases.find((c) => c.id === store.currentCaseId)?.medicalScheme) ||
+        'discovery';
+      DataService.setActiveScheme(scheme);
+      await DataService.initialize(scheme);
       setIsInitialized(true);
     };
     init();
   }, []);
 
-  const isPracticeReady = Boolean(practiceName.trim());
+  useEffect(() => {
+    if (auth.isAssistant) {
+      setUserRole('assistant');
+    } else if (auth.isOwner) {
+      setUserRole('doctor');
+    }
+  }, [auth.isAssistant, auth.isOwner]);
 
-  const handleStartOnboarding = () => {
-    setOnboardingPracticeName(practiceName);
-    setOnboardingDoctorName(doctorName);
-    setOnboardingAssistantName(assistantName);
-    setCurrentView('onboarding');
+  useEffect(() => {
+    if (auth.isAssistant && auth.workspace && currentView === 'landing') {
+      setCurrentView('assistant-home');
+    }
+  }, [auth.isAssistant, auth.workspace, currentView]);
+
+  useEffect(() => {
+    if (auth.isOwner && !assistantWorkspaceReady) {
+      setLandingRole('doctor');
+    }
+  }, [auth.isOwner, assistantWorkspaceReady]);
+
+  useEffect(() => {
+    if (!auth.user) {
+      setEmailDeliveryConfigured(false);
+      return;
+    }
+    void fetchEmailDeliveryConfigured().then(setEmailDeliveryConfigured);
+  }, [auth.user]);
+
+  const isPracticeReady = Boolean(auth.workspace?.id);
+
+  const notifyPatientDeliveryResult = (
+    email: string,
+    delivery: Awaited<ReturnType<typeof deliverClaimToPatient>>
+  ) => {
+    if (delivery.method === 'automated') {
+      alert(`Claim package emailed to ${email}.`);
+      return;
+    }
+    const isNotConfigured = delivery.reason.includes('RESEND_');
+    alert(
+      isNotConfigured
+        ? `Automated email is not configured yet.\n\n${delivery.reason}\n\nThe claim ZIP was downloaded and your email app was opened — attach the file before you send.`
+        : `Could not send automatically: ${delivery.reason}\n\nThe claim ZIP was downloaded and your email app was opened instead.`
+    );
   };
 
   const handleOpenAssistantWorkspace = () => {
-    if (!isPracticeReady) {
-      setCurrentView('onboarding');
-      return;
-    }
+    if (!isPracticeReady) return;
     setLandingRole('assistant');
     setUserRole('assistant');
     setCurrentView('assistant-home');
   };
 
   const handleOpenDoctorWorkspace = () => {
-    if (!isPracticeReady) {
-      setCurrentView('onboarding');
-      return;
-    }
+    if (!isPracticeReady) return;
     setLandingRole('doctor');
     setUserRole('doctor');
     setCurrentView('dashboard');
-  };
-
-  const handleSavePracticeInfo = (practice: { practiceName: string; doctorName: string; assistantName: string }) => {
-    setPracticeName(practice.practiceName);
-    setDoctorName(practice.doctorName);
-    setAssistantName(practice.assistantName);
-    setUserRole(null);
-    setCurrentView('landing');
-  };
-
-  const handleOnboardingSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    const errors: typeof onboardingErrors = {};
-
-    if (!onboardingPracticeName.trim()) {
-      errors.practiceName = 'Practice name is required';
-    }
-    if (!onboardingDoctorName.trim()) {
-      errors.doctorName = 'Doctor name is required';
-    }
-    if (!onboardingAssistantName.trim()) {
-      errors.assistantName = 'Assistant name is required';
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setOnboardingErrors(errors);
-      return;
-    }
-
-    setOnboardingErrors({});
-    handleSavePracticeInfo({
-      practiceName: onboardingPracticeName.trim(),
-      doctorName: onboardingDoctorName.trim(),
-      assistantName: onboardingAssistantName.trim(),
-    });
   };
 
   const handleAssistantNewCase = () => {
@@ -165,13 +219,64 @@ export default function Home() {
     setCurrentView('dashboard');
   };
 
-  const handleBackToAssistantHome = () => {
-    setCurrentView('assistant-home');
+  const clearActiveCaseContext = () => {
     setSelectedCaseId(null);
     setCurrentCaseForView(null);
+    setPatientName('');
+    setPatientId('');
+    setPatientEmail('');
+    setPatientPhone('');
+    setMedicalAidNumber('');
+    setMatchedConditions([]);
+    store.resetWorkflow();
   };
 
-  const handleLogout = () => {
+  const handleBackToDoctorWorkspace = () => {
+    clearActiveCaseContext();
+    setUserRole('doctor');
+    setLandingRole('doctor');
+    setCurrentView('landing');
+  };
+
+  const handleBackToAssistantHome = () => {
+    clearActiveCaseContext();
+    setUserRole('assistant');
+    setCurrentView('assistant-home');
+  };
+
+  /** Leave patient management / workflow and return to the role workspace hub */
+  const handleBackToWorkspace = () => {
+    if (userRole === 'assistant') {
+      handleBackToAssistantHome();
+    } else {
+      handleBackToDoctorWorkspace();
+    }
+  };
+
+  const handleOpenReports = () => {
+    setRecordProfileId(null);
+    setCurrentView('patient-record');
+  };
+
+  const handleOpenPatientRecord = (profileId: string) => {
+    setRecordProfileId(profileId);
+    setCurrentView('patient-record');
+  };
+
+  const handleChangeRecordPatient = () => {
+    setRecordProfileId(null);
+  };
+
+  const handleBackFromPatientRecord = () => {
+    if (recordProfileId && selectedProfileId === recordProfileId) {
+      handleBackToPatientProfile();
+    } else {
+      handleBackToDashboard();
+    }
+  };
+
+  const handleLogout = async () => {
+    await auth.signOutAccount();
     setUserRole(null);
     setCurrentView('landing');
     setSelectedCaseId(null);
@@ -190,6 +295,8 @@ export default function Home() {
       setUserRole('doctor');
     }
     store.resetWorkflow();
+    setSelectedProfileId(null);
+    setPatientInfoPrefill(undefined);
     setPatientName('');
     setPatientId('');
     setPatientEmail('');
@@ -200,6 +307,16 @@ export default function Home() {
   };
 
   const handlePatientInfoSubmit = (patientInfo: PatientInfo) => {
+    const intakeCheck = validateNewPatientIntake(
+      store.cases,
+      patientInfo.patientId,
+      patientInfo.patientName
+    );
+    if (!intakeCheck.ok) {
+      alert(intakeCheck.message);
+      return;
+    }
+
     setPatientName(patientInfo.patientName);
     setPatientId(patientInfo.patientId);
     setPatientEmail(patientInfo.patientEmail);
@@ -208,18 +325,28 @@ export default function Home() {
     store.setSelectedPlan(patientInfo.plan);
 
     const isAssistantIntake = userRole === 'assistant';
+    const newProfileId = createProfileId();
 
     if (patientInfo.claimType) {
       setCurrentClaimType(patientInfo.claimType);
     }
 
+    const enrollment = patientInfo.cibEnrollmentStatus;
+    const scheme = patientInfo.medicalScheme;
+    DataService.setActiveScheme(scheme);
+    void DataService.initialize(scheme);
+
     const newCase: PatientCase = {
-      id: Date.now().toString(),
+      id: createCaseId(),
+      profileId: newProfileId,
       patientName: patientInfo.patientName,
       patientId: patientInfo.patientId,
       patientEmail: patientInfo.patientEmail,
       patientPhone: patientInfo.patientPhone,
       medicalAidNumber: patientInfo.medicalAidNumber,
+      medicalScheme: scheme,
+      cibEnrollmentStatus: enrollment,
+      ...(enrollment === 'unregistered' ? { claimType: 'diagnostic' as ClaimType } : {}),
       ...(patientInfo.claimType ? { claimType: patientInfo.claimType } : {}),
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -233,14 +360,24 @@ export default function Home() {
       medicationNote: '',
       plan: patientInfo.plan,
       status: 'new',
+      cibRecords: [],
+      workspaceId: auth.workspace?.id,
+      deliveryStatus: 'draft',
     };
 
     store.addCase(newCase);
     setSelectedCaseId(newCase.id);
     setPatientInfoPrefill(undefined);
 
+    store.setActiveBenefitState(enrollmentToBenefitState(enrollment));
+    if (enrollment === 'unregistered') {
+      setCurrentClaimType('diagnostic');
+    } else if (patientInfo.claimType) {
+      setCurrentClaimType(patientInfo.claimType);
+    }
+
     if (isAssistantIntake) {
-      setCurrentCaseForView(newCase);
+      setCurrentCaseForView(normalizePatientCase(newCase));
       setCurrentView('case-options');
       return;
     }
@@ -254,10 +391,21 @@ export default function Home() {
   };
 
   const handleDoctorSelectClaimType = (caseId: string, claimType: ClaimType) => {
+    const caseData = store.cases.find((c) => c.id === caseId);
+    if (
+      caseData?.cibEnrollmentStatus === 'unregistered' &&
+      caseData.status === 'new' &&
+      claimType !== 'diagnostic'
+    ) {
+      alert('Unregistered patients must start with the diagnostic evidence workflow.');
+      return;
+    }
     store.updateCase(caseId, { claimType, updatedAt: new Date() });
     setCurrentClaimType(claimType);
     if (currentCaseForView?.id === caseId) {
-      setCurrentCaseForView({ ...currentCaseForView, claimType, updatedAt: new Date() });
+      setCurrentCaseForView(
+        normalizePatientCase({ ...currentCaseForView, claimType, updatedAt: new Date() })
+      );
     }
   };
 
@@ -265,13 +413,14 @@ export default function Home() {
     const caseData = store.cases.find(c => c.id === caseId);
     if (caseData) {
       setSelectedCaseId(caseId);
-      setCurrentCaseForView(caseData);
+      setSelectedProfileId(resolveProfileId(caseData));
+      setCurrentCaseForView(normalizePatientCase(caseData));
       setCurrentView('case-options');
     }
   };
 
-  const handleViewPatientProfile = (patientId: string) => {
-    setSelectedPatientId(patientId);
+  const handleViewPatientProfile = (profileId: string) => {
+    setSelectedProfileId(profileId);
     setCurrentView('patient-profile');
   };
 
@@ -288,7 +437,9 @@ export default function Home() {
       setPatientPhone(currentCaseForView.patientPhone || '');
       setMedicalAidNumber(currentCaseForView.medicalAidNumber || '');
       setCurrentClaimType(currentCaseForView.claimType ?? 'diagnostic');
-      
+      const scheme = currentCaseForView.medicalScheme ?? 'discovery';
+      DataService.setActiveScheme(scheme);
+      void DataService.initialize(scheme);
       store.loadCase(selectedCaseId);
       store.setCurrentStep(0);
       setCurrentView('workflow');
@@ -308,9 +459,11 @@ export default function Home() {
       setPatientPhone(currentCaseForView.patientPhone || '');
       setMedicalAidNumber(currentCaseForView.medicalAidNumber || '');
       setCurrentClaimType(currentCaseForView.claimType ?? 'diagnostic');
-      
+      const scheme = currentCaseForView.medicalScheme ?? 'discovery';
+      DataService.setActiveScheme(scheme);
+      void DataService.initialize(scheme);
       store.loadCase(selectedCaseId);
-      
+
       const claimType = currentCaseForView.claimType ?? 'diagnostic';
       if (claimType === 'ongoing-management' || claimType === 'medication-report') {
         store.setCurrentStep(0);
@@ -351,8 +504,8 @@ export default function Home() {
    * Creates a new claim for the existing patient, pre-fills data from their latest case,
    * and routes directly into the relevant workflow — no PatientInfoForm needed.
    */
-  const handleNewCaseActionForPatient = (pid: string, claimType: ClaimType) => {
-    const patientCases = store.cases.filter((c) => c.patientId === pid);
+  const handleNewCaseActionForPatient = (profileId: string, claimType: ClaimType) => {
+    const patientCases = filterCasesByProfile(store.cases, profileId);
     if (patientCases.length === 0) return;
 
     const latest = [...patientCases].sort(
@@ -374,7 +527,7 @@ export default function Home() {
       .filter((c) => c.condition)
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())[0];
 
-    if (withCondition) {
+    if (claimType !== 'diagnostic' && withCondition) {
       store.setSelectedCondition(
         withCondition.condition,
         withCondition.icdCode,
@@ -389,29 +542,58 @@ export default function Home() {
     }
 
     const newCase: PatientCase = {
-      id: Date.now().toString(),
+      id: createCaseId(),
+      profileId: resolveProfileId(latest),
       patientName: latest.patientName,
       patientId: latest.patientId,
       patientEmail: latest.patientEmail,
       patientPhone: latest.patientPhone,
       medicalAidNumber: latest.medicalAidNumber,
-      claimType,
       createdAt: new Date(),
       updatedAt: new Date(),
       clinicalNote: '',
-      condition: withCondition?.condition || '',
-      icdCode: withCondition?.icdCode || '',
-      icdDescription: withCondition?.icdDescription || '',
+      condition: claimType === 'diagnostic' ? '' : withCondition?.condition || '',
+      icdCode: claimType === 'diagnostic' ? '' : withCondition?.icdCode || '',
+      icdDescription: claimType === 'diagnostic' ? '' : withCondition?.icdDescription || '',
       diagnosticTreatments: [],
       ongoingTreatments: [],
       medications: claimType === 'medication-report' ? [...latest.medications] : [],
       medicationNote: claimType === 'medication-report' ? (latest.medicationNote || '') : '',
       plan: latest.plan,
       status: 'new',
+      medicalScheme: latest.medicalScheme ?? 'discovery',
+      cibEnrollmentStatus: latest.cibEnrollmentStatus ?? 'unregistered',
+      claimType:
+        (latest.cibEnrollmentStatus ?? 'unregistered') === 'unregistered'
+          ? 'diagnostic'
+          : claimType,
+      cibRecords: latest.cibRecords ?? [],
     };
 
     store.addCase(newCase);
     setSelectedCaseId(newCase.id);
+
+    if (claimType === 'diagnostic') {
+      store.setActiveBenefitState('unregistered');
+      store.setDiagnosisDate('');
+    } else {
+      const conditionName = withCondition?.condition || '';
+      const conditionRecord = getCibRecordForCondition(
+        [...patientCases, newCase],
+        latest.patientId,
+        conditionName
+      );
+      store.setActiveBenefitState(
+        conditionRecord?.benefitState ??
+          enrollmentToBenefitState(newCase.cibEnrollmentStatus ?? 'unregistered')
+      );
+      if (conditionRecord?.diagnosisDate) {
+        store.setDiagnosisDate(conditionRecord.diagnosisDate);
+      }
+    }
+    DataService.setActiveScheme(newCase.medicalScheme ?? 'discovery');
+    void DataService.initialize(newCase.medicalScheme ?? 'discovery');
+
     setCurrentView('workflow');
   };
 
@@ -458,7 +640,11 @@ export default function Home() {
       const response = await fetch('/api/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clinical_note: store.clinicalNote }),
+        body: JSON.stringify({
+          clinical_note: store.clinicalNote,
+          benefit_state: store.activeBenefitState ?? 'unregistered',
+          workflow_mode: isWorkflowB(store.activeBenefitState) ? 'maintenance' : 'registration',
+        }),
       });
 
       if (!response.ok) {
@@ -502,10 +688,35 @@ export default function Home() {
 
   const handleSelectCondition = (condition: string, icdCode: string, description: string) => {
     store.setSelectedCondition(condition, icdCode, description);
+    const pid = patientId || store.cases.find((c) => c.id === store.currentCaseId)?.patientId;
+    if (pid) {
+      const rec = getCibRecordForCondition(store.cases, pid, condition);
+      if (rec) {
+        store.setActiveBenefitState(rec.benefitState);
+        if (rec.diagnosisDate) store.setDiagnosisDate(rec.diagnosisDate);
+      } else {
+        const enrollment = getPatientEnrollmentStatus(store.cases, pid);
+        store.setActiveBenefitState(enrollmentToBenefitState(enrollment));
+      }
+    }
   };
 
+  const getWorkflowCase = () =>
+    store.cases.find((c) => c.id === (store.currentCaseId || selectedCaseId));
+
+  const isUnregisteredDiagnosticFlow = () => {
+    const c = getWorkflowCase();
+    return (
+      currentClaimType === 'diagnostic' &&
+      (c?.cibEnrollmentStatus === 'unregistered' || isWorkflowA(store.activeBenefitState))
+    );
+  };
+
+  const medicationStepIndex = () => (isUnregisteredDiagnosticFlow() ? 5 : 4);
+  const finalStepIndex = () => (isUnregisteredDiagnosticFlow() ? 6 : 5);
+  const maxNavStepIndex = () => (isUnregisteredDiagnosticFlow() ? 5 : 5);
+
   const handleNextStep = () => {
-    // Validation
     if (store.currentStep === 1 && !store.selectedCondition) {
       alert('Please select a condition');
       return;
@@ -514,21 +725,56 @@ export default function Home() {
       alert('Please select an ICD-10 code');
       return;
     }
-    
-    // Handle medication substeps
-    if (store.currentStep === 4) {
+
+    if (isUnregisteredDiagnosticFlow()) {
+      if (store.currentStep === 3) {
+        if (store.diagnosticTreatments.length === 0) {
+          alert('Select at least one diagnostic test from the basket.');
+          return;
+        }
+      }
+      if (store.currentStep === 4) {
+        const gate = canProceedFromEvidenceReview(
+          store.diagnosticTreatments,
+          store.selectedIcdCode ?? '',
+          store.diagnosisDate
+        );
+        if (!gate.ok) {
+          alert(gate.reason);
+          return;
+        }
+      }
+      if (store.currentStep === medicationStepIndex()) {
+        if (store.medicationSubstep === 1) {
+          if (store.medications.length === 0) {
+            alert('Please select at least one medication before proceeding');
+            return;
+          }
+          store.setMedicationSubstep(2);
+          return;
+        }
+        if (store.medicationSubstep === 2) {
+          if (!store.medicationNote && !store.medications.some((m) => m.note)) {
+            const proceed = confirm(
+              'No registration note has been entered. Proceed to CIB registration without a note?'
+            );
+            if (!proceed) return;
+          }
+          store.setCurrentStep(finalStepIndex());
+          return;
+        }
+      }
+    } else if (store.currentStep === 4) {
       if (store.medicationSubstep === 1) {
-        // Moving from medication selection to registration note
         if (store.medications.length === 0) {
           alert('Please select at least one medication before proceeding');
           return;
         }
         store.setMedicationSubstep(2);
         return;
-      } else if (store.medicationSubstep === 2) {
-        // Moving from registration note to final claim
-        // Optional validation for registration note
-        if (!store.medicationNote && !store.medications.some(m => m.note)) {
+      }
+      if (store.medicationSubstep === 2) {
+        if (!store.medicationNote && !store.medications.some((m) => m.note)) {
           const proceed = confirm('No registration note has been entered. Do you want to proceed without a note?');
           if (!proceed) return;
         }
@@ -536,19 +782,69 @@ export default function Home() {
         return;
       }
     }
-    
-    const nextStep = store.currentStep + 1;
-    store.setCurrentStep(nextStep);
+
+    store.setCurrentStep(store.currentStep + 1);
   };
 
   const handlePreviousStep = () => {
-    // Handle medication substeps
-    if (store.currentStep === 4 && store.medicationSubstep === 2) {
+    const medStep = medicationStepIndex();
+    if (store.currentStep === medStep && store.medicationSubstep === 2) {
       store.setMedicationSubstep(1);
       return;
     }
-    
+    if (store.currentStep === finalStepIndex()) {
+      store.setCurrentStep(medStep);
+      store.setMedicationSubstep(2);
+      return;
+    }
     store.setCurrentStep(Math.max(0, store.currentStep - 1));
+  };
+
+  const handleCibRegistrationSubmit = async (motivationNote: string) => {
+    const caseId = store.currentCaseId || selectedCaseId;
+    if (!caseId || !store.selectedCondition) return;
+
+    setIsCibSubmitting(true);
+    try {
+      const record: CibRecord = {
+        ...buildDefaultCibRecord(
+          store.selectedCondition,
+          store.selectedIcdCode || '',
+          store.diagnosisDate,
+          store.medications[0]?.medicineNameAndStrength
+        ),
+        fundingLagNote: motivationNote.trim() || undefined,
+        formularyAligned: store.medications.every((m) => m.formularyStatus === 'listed'),
+      };
+
+      store.upsertCibRecord(caseId, record);
+      store.setActiveBenefitState('pending_cib_review');
+      store.setMedicationNote(motivationNote);
+
+      const patientData = getPatientInfoForSave();
+      store.updateCase(caseId, {
+        ...patientData,
+        clinicalNote: store.clinicalNote,
+        condition: store.selectedCondition,
+        icdCode: store.selectedIcdCode || '',
+        icdDescription: store.selectedIcdDescription || '',
+        diagnosticTreatments: store.diagnosticTreatments,
+        medications: store.medications,
+        medicationNote: motivationNote,
+        plan: store.selectedPlan,
+        status: 'completed',
+        cibEnrollmentStatus: 'registered',
+        doctorApproved: auth.isOwner,
+        deliveryStatus: 'ready_to_send',
+      });
+
+      setClaimCompletionSource('cib');
+      setShowClaimCompletion(true);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to submit CIB registration');
+    } finally {
+      setIsCibSubmitting(false);
+    }
   };
 
   const handleExportPDF = () => {
@@ -613,7 +909,43 @@ export default function Home() {
       medicationReports:
         store.cases.find((c) => c.id === caseId)?.medicationReports ?? base?.medicationReports,
       referrals: base?.referrals,
+      clinicalAppeals: base?.clinicalAppeals,
+      cibRecords: base?.cibRecords,
+      medicalScheme: base?.medicalScheme ?? getPatientMedicalScheme(store.cases, patientData.patientId),
+      cibEnrollmentStatus: base?.cibEnrollmentStatus ?? 'unregistered',
     };
+  };
+
+  const syncCibRecordOnCase = (record: CibRecord) => {
+    const caseId = store.currentCaseId || selectedCaseId;
+    if (caseId) {
+      store.upsertCibRecord(caseId, record);
+    }
+  };
+
+  const handleBenefitStateChange = (newState: BenefitState) => {
+    store.setActiveBenefitState(newState);
+    const condition = store.selectedCondition;
+    const caseId = store.currentCaseId || selectedCaseId;
+    if (condition && caseId) {
+      const existing = store.cases
+        .find((c) => c.id === caseId)
+        ?.cibRecords?.find((r) => r.conditionName === condition);
+      store.upsertCibRecord(caseId, {
+        conditionName: condition,
+        icd10: store.selectedIcdCode || existing?.icd10 || '',
+        diagnosisDate: store.diagnosisDate || existing?.diagnosisDate,
+        benefitState: newState,
+        formularyAligned: existing?.formularyAligned ?? true,
+        approvalDate:
+          newState !== 'unregistered' && newState !== 'pending_cib_review'
+            ? existing?.approvalDate ?? new Date().toISOString().slice(0, 10)
+            : existing?.approvalDate,
+      });
+      if (isWorkflowB(newState)) {
+        store.reconcileMedicationsForBenefitState();
+      }
+    }
   };
 
   const refreshCurrentCaseView = () => {
@@ -621,7 +953,7 @@ export default function Home() {
     if (!caseId) return;
     const updated = store.cases.find((c) => c.id === caseId);
     if (updated) {
-      setCurrentCaseForView(updated);
+      setCurrentCaseForView(normalizePatientCase(updated));
       setSelectedCaseId(caseId);
     }
   };
@@ -635,6 +967,158 @@ export default function Home() {
 
     const pdfService = new PDFExportService();
     await pdfService.exportInitialClaimWithAttachments(patientCase);
+  };
+
+  const persistCompletedCase = async (
+    deliveryStatus: 'ready_to_send' | 'sent_to_patient',
+    doctorApproved: boolean
+  ) => {
+    const patientData = getPatientInfoForSave();
+    if (!patientData.patientName || !patientData.patientId) {
+      throw new Error('Please enter patient name and ID');
+    }
+
+    const caseUpdates = {
+      patientName: patientData.patientName,
+      patientId: patientData.patientId,
+      patientEmail: patientData.patientEmail,
+      patientPhone: patientData.patientPhone,
+      medicalAidNumber: patientData.medicalAidNumber,
+      clinicalNote: store.clinicalNote,
+      condition: store.selectedCondition || '',
+      icdCode: store.selectedIcdCode || '',
+      icdDescription: store.selectedIcdDescription || '',
+      diagnosticTreatments: store.diagnosticTreatments,
+      ongoingTreatments: store.ongoingTreatments,
+      medications: store.medications,
+      medicationNote: store.medicationNote,
+      plan: store.selectedPlan,
+      status: 'completed' as const,
+      deliveryStatus,
+      doctorApproved,
+      updatedAt: new Date(),
+    };
+
+    const caseIdForSave = store.currentCaseId || selectedCaseId;
+
+    await saveCaseToDatabase({
+      ...patientData,
+      clinicalNote: store.clinicalNote,
+      conditionName: store.selectedCondition || '',
+      icdCode: store.selectedIcdCode || '',
+      icdDescription: store.selectedIcdDescription || '',
+      diagnosticTreatments: store.diagnosticTreatments,
+      ongoingTreatments: store.ongoingTreatments,
+      medications: store.medications,
+      medicationNote: store.medicationNote,
+      plan: store.selectedPlan,
+      isFinalSave: true,
+      workspaceId: auth.workspace?.id,
+      createdBy: auth.user?.id,
+      deliveryStatus,
+      doctorApproved,
+    });
+
+    if (caseIdForSave) {
+      store.updateCase(caseIdForSave, caseUpdates);
+    } else {
+      store.saveCase(patientData.patientName, patientData.patientId, currentClaimType);
+      if (store.currentCaseId) {
+        setSelectedCaseId(store.currentCaseId);
+        store.updateCase(store.currentCaseId, caseUpdates);
+      }
+    }
+  };
+
+  const handleClaimCompletionAction = async (action: ClaimCompletionAction) => {
+    setIsSaving(true);
+    try {
+      const isDoctor = userRole === 'doctor';
+      let deliveryStatus: 'ready_to_send' | 'sent_to_patient' =
+        action === 'send_patient' ? 'sent_to_patient' : 'ready_to_send';
+
+      if (action === 'send_patient') {
+        const exportData = getPatientExportData();
+        const email = patientEmail || getPatientInfoForSave().patientEmail;
+        if (exportData && email) {
+          const delivery = await deliverClaimToPatient(
+            exportData,
+            email,
+            practiceName || 'Your practice',
+            doctorName
+          );
+          deliveryStatus = delivery.method === 'automated' ? 'sent_to_patient' : 'ready_to_send';
+          notifyPatientDeliveryResult(email, delivery);
+        }
+      }
+
+      await persistCompletedCase(deliveryStatus, isDoctor);
+
+      if (action === 'export_pdf') {
+        handleExportPDF();
+      } else if (action === 'export_zip') {
+        await handleExportWithAttachments();
+      }
+
+      setShowClaimCompletion(false);
+      store.resetWorkflow();
+      setCurrentView(userRole === 'assistant' ? 'assistant-home' : 'dashboard');
+      if (action !== 'send_patient') {
+        alert(action === 'save' ? 'Case saved to workspace.' : 'Case saved and exported successfully!');
+      }
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to complete claim');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDashboardSendToPatient = async (caseId: string) => {
+    const caseData = store.cases.find((c) => c.id === caseId);
+    if (!caseData?.patientEmail) {
+      alert('No patient email on this case.');
+      return;
+    }
+
+    store.loadCase(caseId);
+    const exportData: PatientExportData = {
+      patientName: caseData.patientName,
+      patientId: caseData.patientId,
+      clinicalNote: caseData.clinicalNote,
+      registrationNote: caseData.medicationNote || '',
+      conditions: caseData.condition
+        ? [{
+            id: '1',
+            name: caseData.condition,
+            icdCode: caseData.icdCode,
+            icdDescription: caseData.icdDescription,
+          }]
+        : [],
+      medications: (caseData.medications ?? []).map((med, index) => ({
+        id: index.toString(),
+        name: med.medicineNameAndStrength,
+        nappiCode: '',
+        quantity: 1,
+        dosage: med.note || med.cdaAmount || 'As prescribed',
+      })),
+    };
+
+    const delivery = await deliverClaimToPatient(
+      exportData,
+      caseData.patientEmail,
+      practiceName || 'Your practice',
+      doctorName
+    );
+
+    if (delivery.method === 'automated') {
+      store.updateCase(caseId, { deliveryStatus: 'sent_to_patient', updatedAt: new Date() });
+      try {
+        await updateCaseDeliveryStatus(caseId, 'sent_to_patient');
+      } catch {
+        // Local state updated even if remote sync fails
+      }
+    }
+    notifyPatientDeliveryResult(caseData.patientEmail, delivery);
   };
 
   const handleSaveCaseOnly = async () => {
@@ -662,8 +1146,14 @@ export default function Home() {
         medicationNote: store.medicationNote,
         plan: store.selectedPlan,
         isFinalSave: true,
+        workspaceId: auth.workspace?.id,
+        createdBy: auth.user?.id,
+        deliveryStatus: userRole === 'doctor' ? 'ready_to_send' : 'ready_to_send',
+        doctorApproved: userRole === 'doctor',
       });
 
+      const caseIdForSave = store.currentCaseId || selectedCaseId;
+      const baseCase = caseIdForSave ? store.cases.find((c) => c.id === caseIdForSave) : undefined;
       const caseUpdates = {
         patientName,
         patientId,
@@ -681,6 +1171,9 @@ export default function Home() {
         plan: store.selectedPlan,
         status: 'completed' as const,
         updatedAt: new Date(),
+        deliveryStatus: 'ready_to_send' as const,
+        doctorApproved: userRole === 'doctor',
+        cibRecords: baseCase?.cibRecords,
       };
 
       if (!result.success) {
@@ -694,7 +1187,7 @@ export default function Home() {
           }
         }
 
-        setShowSaveModal(false);
+        setShowClaimCompletion(false);
         store.resetWorkflow();
         setCurrentView('dashboard');
         alert(`Saved locally. Remote save failed: ${result.error || 'Unknown error'}`);
@@ -709,7 +1202,7 @@ export default function Home() {
           }
         }
 
-        setShowSaveModal(false);
+        setShowClaimCompletion(false);
         store.resetWorkflow();
         setCurrentView('dashboard');
         alert('Case saved successfully!');
@@ -754,7 +1247,7 @@ export default function Home() {
       }
     }
 
-    setShowSaveModal(false);
+    setShowClaimCompletion(false);
 
     if (includeAttachments) {
       await handleExportWithAttachments();
@@ -989,6 +1482,84 @@ export default function Home() {
     setShowPatientExport(true);
   };
 
+  const resolveCaseIdForCib = (): string | null => {
+    if (store.currentCaseId) return store.currentCaseId;
+    if (selectedCaseId) return selectedCaseId;
+    if (selectedProfileId) {
+      const patientCases = filterCasesByProfile(store.cases, selectedProfileId);
+      const latest = [...patientCases].sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      )[0];
+      return latest?.id ?? null;
+    }
+    return null;
+  };
+
+  const handleOpenCibAssistant = (conditionName: string) => {
+    setCibAssistantCondition(conditionName);
+    const activeProfileId =
+      (store.currentCaseId &&
+        store.cases.find((c) => c.id === store.currentCaseId) &&
+        resolveProfileId(store.cases.find((c) => c.id === store.currentCaseId)!)) ||
+      selectedProfileId;
+    if (activeProfileId) {
+      const patientCases = filterCasesByProfile(store.cases, activeProfileId);
+      const latest = [...patientCases].sort(
+        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      )[0];
+      if (latest) {
+        setPatientName(latest.patientName);
+        setPatientId(latest.patientId);
+        setMedicalAidNumber(latest.medicalAidNumber || '');
+        store.setSelectedPlan(latest.plan);
+      }
+      const matchCase =
+        patientCases.find((c) => c.condition === conditionName) ?? latest;
+      if (matchCase?.icdCode) {
+        store.setSelectedCondition(conditionName, matchCase.icdCode, matchCase.icdDescription);
+      }
+      const rec = getCibRecordForCondition(
+        store.cases,
+        latest?.patientId ?? patientId,
+        conditionName
+      );
+      if (rec?.diagnosisDate) store.setDiagnosisDate(rec.diagnosisDate);
+    }
+    setShowCibAssistant(true);
+  };
+
+  const handleCibRecordCreated = (record: CibRecord) => {
+    const caseId = resolveCaseIdForCib();
+    if (caseId) {
+      store.upsertCibRecord(caseId, record);
+      store.setActiveBenefitState(record.benefitState);
+      if (record.diagnosisDate) store.setDiagnosisDate(record.diagnosisDate);
+      store.reconcileMedicationsForBenefitState();
+    }
+    setShowCibAssistant(false);
+  };
+
+  const cibAssistantModal = showCibAssistant ? (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-xl">
+        <CibApplicationAssistant
+          conditionName={cibAssistantCondition}
+          icdCode={store.selectedIcdCode ?? ''}
+          patientName={patientName}
+          patientId={patientId}
+          medicalAidNumber={medicalAidNumber}
+          plan={store.selectedPlan}
+          clinicalNote={store.clinicalNote}
+          diagnosisDate={store.diagnosisDate}
+          submittedMedicine={store.medications[0]?.medicineNameAndStrength}
+          diagnosticTreatments={store.diagnosticTreatments}
+          onClose={() => setShowCibAssistant(false)}
+          onCibRecordCreated={handleCibRecordCreated}
+        />
+      </div>
+    </div>
+  ) : null;
+
   const getPatientExportData = (): PatientExportData | null => {
     if (!store.currentCaseId) return null;
 
@@ -1016,7 +1587,7 @@ export default function Home() {
     };
   };
 
-  const steps = [
+  const standardDiagnosticSteps = [
     { id: 0, title: 'Clinical Note' },
     { id: 1, title: 'Condition' },
     { id: 2, title: 'ICD Code' },
@@ -1024,6 +1595,54 @@ export default function Home() {
     { id: 4, title: 'Medication' },
     { id: 5, title: 'Final Claim' },
   ];
+
+  const unregisteredDiagnosticSteps = [
+    { id: 0, title: 'Clinical Note' },
+    { id: 1, title: 'Condition' },
+    { id: 2, title: 'ICD Code' },
+    { id: 3, title: 'Diagnostics' },
+    { id: 4, title: 'Evidence Review' },
+    { id: 5, title: 'Medication' },
+    { id: 6, title: 'CIB Registration' },
+  ];
+
+  if (auth.authLoading || (auth.session && auth.isLoading)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-primary-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-gray-300">Loading workspace…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!auth.session) {
+    return <AuthLanding />;
+  }
+
+  if (!auth.workspace) {
+    if (auth.isAssistant) {
+      return (
+        <div className="min-h-screen flex items-center justify-center px-6">
+          <div className="authi-surface-card p-8 max-w-md text-center">
+            <p className="text-lg font-semibold text-slate-900">No workspace linked yet</p>
+            <p className="text-sm text-slate-600 mt-2">
+              Ask your doctor to send you an invite link, then sign in with the invited email.
+            </p>
+            <button
+              type="button"
+              onClick={() => void auth.signOutAccount()}
+              className="authi-btn-secondary mt-6 px-5 py-3 text-sm rounded-xl"
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return <DoctorOnboardingForm />;
+  }
 
   if (!isInitialized) {
     return (
@@ -1052,42 +1671,49 @@ export default function Home() {
               </p>
             </div>
 
-            {isPracticeReady && (
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setLandingRole('assistant')}
-                  className={
-                    landingRole === 'assistant'
-                      ? 'authi-role-pill-active'
-                      : 'authi-role-pill-inactive'
-                  }
-                >
-                  <span className={landingRole === 'assistant' ? 'authi-gradient-text font-bold' : ''}>
-                    Assistant{assistantName ? ` · ${assistantName}` : ''}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setLandingRole('doctor')}
-                  className={
-                    landingRole === 'doctor'
-                      ? 'authi-role-pill-active'
-                      : 'authi-role-pill-inactive'
-                  }
-                >
-                  <span className={landingRole === 'doctor' ? 'authi-gradient-text font-bold' : ''}>
-                    Doctor{doctorName ? ` · ${doctorName}` : ''}
-                  </span>
-                </button>
-              </div>
+            {isPracticeReady && auth.isOwner && (
+              assistantWorkspaceReady ? (
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setLandingRole('assistant')}
+                    className={
+                      landingRole === 'assistant'
+                        ? 'authi-role-pill-active'
+                        : 'authi-role-pill-inactive'
+                    }
+                  >
+                    <span className={landingRole === 'assistant' ? 'authi-gradient-text font-bold' : ''}>
+                      Assistant{assistantName ? ` · ${assistantName}` : ''}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLandingRole('doctor')}
+                    className={
+                      landingRole === 'doctor'
+                        ? 'authi-role-pill-active'
+                        : 'authi-role-pill-inactive'
+                    }
+                  >
+                    <span className={landingRole === 'doctor' ? 'authi-gradient-text font-bold' : ''}>
+                      Doctor{doctorName ? ` · ${doctorName}` : ''}
+                    </span>
+                  </button>
+                </div>
+              ) : (
+                <p className="text-sm font-semibold text-slate-700">
+                  <span className="authi-gradient-text">Doctor</span>
+                  {doctorName ? ` · ${doctorName}` : ''}
+                </p>
+              )
             )}
 
             <button
-              onClick={handleStartOnboarding}
-              className="authi-btn-primary rounded-xl px-4 py-2 text-xs"
+              onClick={() => void handleLogout()}
+              className="authi-btn-secondary rounded-xl px-4 py-2 text-xs"
             >
-              Practice onboarding
+              Sign out
             </button>
           </div>
 
@@ -1097,42 +1723,43 @@ export default function Home() {
               {isPracticeReady ? (
                 <>
                   <p className="text-sm font-bold uppercase tracking-[0.3em] authi-gradient-text">Welcome back</p>
-                  <h2 className="mt-4 text-4xl font-semibold text-slate-950">Choose how you want to work today</h2>
+                  <h2 className="mt-4 text-4xl font-semibold text-slate-950">
+                    {auth.isOwner ? 'Your practice workspace' : 'Assistant workspace'}
+                  </h2>
                   <p className="mt-6 text-lg leading-8 text-slate-600">
-                    Switch between assistant and doctor roles for {practiceName}. Open the workspace for the role you need.
+                    {auth.isOwner
+                      ? `Manage claims for ${practiceName}, invite your assistant, and open the doctor workflow.`
+                      : `Create patient intake for ${practiceName}. The doctor completes clinical sign-off.`}
                   </p>
 
-                  <div className="authi-tab-group mt-8">
-                    <button
-                      type="button"
-                      onClick={() => setLandingRole('assistant')}
-                      className={
-                        landingRole === 'assistant' ? 'authi-tab-selected' : 'authi-tab-inactive'
-                      }
-                    >
-                      <span className={landingRole === 'assistant' ? 'authi-gradient-text font-bold' : ''}>
-                        Assistant{assistantName ? ` · ${assistantName}` : ''}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setLandingRole('doctor')}
-                      className={
-                        landingRole === 'doctor' ? 'authi-tab-selected' : 'authi-tab-inactive'
-                      }
-                    >
-                      <span className={landingRole === 'doctor' ? 'authi-gradient-text font-bold' : ''}>
-                        Doctor{doctorName ? ` · ${doctorName}` : ''}
-                      </span>
-                    </button>
-                  </div>
+                  {auth.isOwner && (landingRole === 'doctor' || !assistantWorkspaceReady) && (
+                    <>
+                      <div className="authi-panel-card mt-8 authi-tint">
+                        <p className="text-sm uppercase tracking-[0.24em] authi-gradient-text font-bold">Doctor role</p>
+                        <h3 className="mt-3 text-xl font-semibold text-slate-900">Claim workflow and sign-off</h3>
+                        <p className="mt-2 text-sm leading-6 text-slate-600">
+                          Review cases, complete CIB registration, and choose save, export, or send to patient.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleOpenDoctorWorkspace}
+                          className="authi-btn-primary mt-6 rounded-2xl px-5 py-3 text-sm"
+                        >
+                          Open doctor workspace
+                        </button>
+                      </div>
+                      <InviteAssistantPanel />
+                    </>
+                  )}
 
-                  {landingRole === 'assistant' ? (
+                  {auth.isOwner && assistantWorkspaceReady && landingRole === 'assistant' && (
                     <div className="authi-panel-card mt-8 authi-tint">
                       <p className="text-sm uppercase tracking-[0.24em] authi-gradient-text font-bold">Assistant role</p>
-                      <h3 className="mt-3 text-xl font-semibold text-slate-900">Patient intake and records</h3>
+                      <h3 className="mt-3 text-xl font-semibold text-slate-900">Patient intake and delivery</h3>
                       <p className="mt-2 text-sm leading-6 text-slate-600">
-                        Create new patient cases and browse saved records. Download claim PDFs or ZIP exports once the doctor has finalized a case.
+                        {hasActiveAssistant
+                          ? `${assistantName} can create patient cases and send claim packages when ready.`
+                          : 'Invite sent — once your assistant accepts, they can manage intake from this workspace.'}
                       </p>
                       <button
                         type="button"
@@ -1142,19 +1769,21 @@ export default function Home() {
                         Open assistant workspace
                       </button>
                     </div>
-                  ) : (
+                  )}
+
+                  {auth.isAssistant && (
                     <div className="authi-panel-card mt-8 authi-tint">
-                      <p className="text-sm uppercase tracking-[0.24em] authi-gradient-text font-bold">Doctor role</p>
-                      <h3 className="mt-3 text-xl font-semibold text-slate-900">Claim workflow and sign-off</h3>
+                      <p className="text-sm uppercase tracking-[0.24em] authi-gradient-text font-bold">Assistant role</p>
+                      <h3 className="mt-3 text-xl font-semibold text-slate-900">Patient intake and delivery</h3>
                       <p className="mt-2 text-sm leading-6 text-slate-600">
-                        Review cases, select conditions, match ICD codes, and finalize claims for your patients.
+                        Create cases with patient email on file. Send claim packages when cases are ready.
                       </p>
                       <button
                         type="button"
-                        onClick={handleOpenDoctorWorkspace}
+                        onClick={handleOpenAssistantWorkspace}
                         className="authi-btn-primary mt-6 rounded-2xl px-5 py-3 text-sm"
                       >
-                        Open doctor workspace
+                        Open assistant workspace
                       </button>
                     </div>
                   )}
@@ -1162,32 +1791,10 @@ export default function Home() {
               ) : (
                 <>
                   <p className="text-sm font-bold uppercase tracking-[0.3em] authi-gradient-text">Welcome</p>
-                  <h2 className="mt-4 text-4xl font-semibold text-slate-950">Your practice onboarding and claim workflow, built for teams.</h2>
+                  <h2 className="mt-4 text-4xl font-semibold text-slate-950">Setting up your workspace…</h2>
                   <p className="mt-6 text-lg leading-8 text-slate-600">
-                    Begin by registering your practice. Once onboarding is complete, you can switch between assistant and doctor roles from this page.
+                    Complete practice setup to start managing claims with your team.
                   </p>
-
-                  <div className="mt-10 grid gap-6 sm:grid-cols-2">
-                    <div className="authi-panel-card">
-                      <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Start here</p>
-                      <h3 className="mt-3 text-xl font-semibold text-slate-900">Assistant intake</h3>
-                      <p className="mt-2 text-sm text-slate-600">Create patient records, add medical history, and begin new cases.</p>
-                    </div>
-                    <div className="authi-panel-card">
-                      <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Next</p>
-                      <h3 className="mt-3 text-xl font-semibold text-slate-900">Doctor workflow</h3>
-                      <p className="mt-2 text-sm text-slate-600">Review cases, select conditions, match ICD codes, and finalize claims.</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-10">
-                    <button
-                      onClick={handleStartOnboarding}
-                      className="authi-btn-primary rounded-2xl px-6 py-3 text-sm"
-                    >
-                      Get started — set up your practice
-                    </button>
-                  </div>
                 </>
               )}
             </div>
@@ -1200,36 +1807,51 @@ export default function Home() {
 
   if (currentView === 'assistant-home') {
     return (
-      <div className="min-h-screen bg-white py-10">
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="flex items-center justify-between gap-4 mb-8 authi-surface-card px-6 py-5 rounded-2xl">
-            <div>
-              <p className="text-sm tracking-wide authi-gradient-text font-semibold">
-                {assistantName || 'Assistant'}
-              </p>
-              <h1 className="mt-3 text-4xl font-semibold text-slate-900">Assistant workspace</h1>
-              <p className="mt-3 text-sm text-slate-500">
-                Choose how you want to work with patient records.
-              </p>
+      <div className="min-h-screen bg-white">
+        <div className="bg-white border-b border-slate-200">
+          <div className="max-w-7xl mx-auto px-6 py-8">
+            <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p className="text-xs tracking-wide mb-2 font-bold authi-gradient-text">
+                  {assistantName || 'Assistant'}
+                </p>
+                <h1 className="text-4xl font-semibold text-slate-900">Assistant workspace</h1>
+                <p className="text-slate-500 mt-1">
+                  Patient intake and claim documents for {practiceName || 'your practice'}.
+                </p>
+              </div>
+              {auth.isOwner && !auth.isAssistant ? (
+                <button
+                  type="button"
+                  onClick={handleBackToDoctorWorkspace}
+                  className="authi-btn-secondary px-5 py-3 text-sm shrink-0 self-start"
+                >
+                  Back to practice
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void handleLogout()}
+                  className="authi-btn-secondary px-5 py-3 text-sm shrink-0 self-start"
+                >
+                  Sign out
+                </button>
+              )}
             </div>
-            <button
-              onClick={handleLogout}
-              className="authi-btn-secondary px-4 py-3 text-sm shrink-0"
-            >
-              Back to home
-            </button>
           </div>
+        </div>
 
+        <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="grid gap-6 md:grid-cols-2">
             <button
               type="button"
               onClick={handleAssistantNewCase}
-              className="authi-choice-card group"
+              className="authi-choice-card group text-left"
             >
               <p className="text-sm uppercase tracking-[0.3em] authi-gradient-text font-semibold group-hover:opacity-90">
                 New patient case
               </p>
-              <h2 className="mt-4 text-3xl font-semibold text-slate-900">Create a new patient intake</h2>
+              <h2 className="mt-4 text-2xl font-semibold text-slate-900">Create a new patient intake</h2>
               <p className="mt-3 text-sm leading-6 text-slate-500">
                 Add patient details and start a case. The doctor completes the clinical workflow and finalizes the claim.
               </p>
@@ -1238,83 +1860,17 @@ export default function Home() {
             <button
               type="button"
               onClick={handleAssistantViewRecords}
-              className="authi-choice-card group"
+              className="authi-choice-card group text-left"
             >
               <p className="text-sm uppercase tracking-[0.3em] authi-gradient-text font-semibold group-hover:opacity-90">
                 Patient records
               </p>
-              <h2 className="mt-4 text-3xl font-semibold text-slate-900">View and download cases</h2>
+              <h2 className="mt-4 text-2xl font-semibold text-slate-900">View and download cases</h2>
               <p className="mt-3 text-sm leading-6 text-slate-500">
-                Browse existing cases. Export claim PDFs or download documents with attachments (ZIP) when ready.
+                Browse existing patients and claims. Export PDFs or download ZIP packages when ready.
               </p>
             </button>
           </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (currentView === 'onboarding') {
-    return (
-      <div className="min-h-screen bg-white py-10">
-        <div className="max-w-4xl mx-auto px-6">
-          <div className="flex items-center justify-between gap-4 mb-8 authi-surface-card px-6 py-5 rounded-2xl">
-            <div>
-              <p className="text-sm uppercase tracking-[0.3em] authi-gradient-text font-semibold">Practice onboarding</p>
-              <h1 className="mt-3 text-4xl font-semibold text-slate-900">Set up your clinic and team</h1>
-              <p className="mt-2 text-slate-500">Enter practice details once, then let your assistant and doctor use the system from the same workflow.</p>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="authi-btn-secondary px-4 py-3 text-sm shrink-0"
-            >
-              Back to home
-            </button>
-          </div>
-
-          <form onSubmit={handleOnboardingSubmit} className="authi-surface-card rounded-[32px] p-8">
-            <div className="grid gap-6">
-              <div>
-                <label className="text-sm font-medium text-slate-700">Practice name</label>
-                <input
-                  value={onboardingPracticeName}
-                  onChange={(e) => setOnboardingPracticeName(e.target.value)}
-                  className={`authi-input mt-2 px-4 py-3 ${onboardingErrors.practiceName ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : ''}`}
-                  placeholder="Enter your practice name"
-                />
-                {onboardingErrors.practiceName && <p className="mt-2 text-sm text-rose-500">{onboardingErrors.practiceName}</p>}
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-slate-700">Doctor name</label>
-                <input
-                  value={onboardingDoctorName}
-                  onChange={(e) => setOnboardingDoctorName(e.target.value)}
-                  className={`authi-input mt-2 px-4 py-3 ${onboardingErrors.doctorName ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : ''}`}
-                  placeholder="Enter doctor name"
-                />
-                {onboardingErrors.doctorName && <p className="mt-2 text-sm text-rose-500">{onboardingErrors.doctorName}</p>}
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-slate-700">Assistant name</label>
-                <input
-                  value={onboardingAssistantName}
-                  onChange={(e) => setOnboardingAssistantName(e.target.value)}
-                  className={`authi-input mt-2 px-4 py-3 ${onboardingErrors.assistantName ? 'border-red-400 focus:border-red-400 focus:ring-red-200' : ''}`}
-                  placeholder="e.g. Sarah"
-                />
-                {onboardingErrors.assistantName && <p className="mt-2 text-sm text-rose-500">{onboardingErrors.assistantName}</p>}
-              </div>
-
-              <button
-                type="submit"
-                className="authi-btn-primary mt-4 w-full rounded-2xl px-6 py-3 text-sm"
-              >
-                Save practice details
-              </button>
-            </div>
-          </form>
         </div>
       </div>
     );
@@ -1328,12 +1884,13 @@ export default function Home() {
         onNewCase={handleNewCaseClick}
         onViewCase={handleViewCase}
         onViewPatientProfile={handleViewPatientProfile}
+        onSendToPatient={handleDashboardSendToPatient}
         canCreateCase={userRole === 'doctor' || userRole === 'assistant'}
         practiceName={practiceName}
         doctorName={doctorName}
         assistantName={assistantName}
         userRole={userRole}
-        onLogout={userRole === 'assistant' ? handleBackToAssistantHome : handleLogout}
+        onBackToWorkspace={handleBackToWorkspace}
       />
     );
   }
@@ -1351,23 +1908,49 @@ export default function Home() {
   }
 
   // Patient profile view
-  if (currentView === 'patient-profile' && selectedPatientId) {
-    const patientCases = store.cases.filter((c) => c.patientId === selectedPatientId);
+  if (currentView === 'patient-profile' && selectedProfileId) {
+    const patientCases = filterCasesByProfile(store.cases, selectedProfileId);
     return (
-      <PatientProfile
-        patientId={selectedPatientId}
-        cases={patientCases}
+      <div>
+        <PatientProfile
+          profileId={selectedProfileId}
+          cases={patientCases}
+          onViewClaim={handleViewCase}
+          onNewCaseAction={handleNewCaseActionForPatient}
+          onViewPatientRecord={handleOpenPatientRecord}
+          onBack={handleBackToDashboard}
+          userRole={userRole}
+        />
+        {cibAssistantModal}
+      </div>
+    );
+  }
+
+  // Patient record / Reports hub
+  if (currentView === 'patient-record') {
+    if (!recordProfileId) {
+      return (
+        <PatientRecordPicker
+          cases={store.cases}
+          onSelectPatient={handleOpenPatientRecord}
+          onBack={handleBackToDashboard}
+        />
+      );
+    }
+    return (
+      <PatientRecordView
+        cases={store.cases}
+        profileId={recordProfileId}
         onViewClaim={handleViewCase}
-        onNewCaseAction={handleNewCaseActionForPatient}
-        onBack={handleBackToDashboard}
-        userRole={userRole}
+        onChangePatient={handleChangeRecordPatient}
+        onBack={handleBackFromPatientRecord}
       />
     );
   }
 
   // Case options view
   if (currentView === 'case-options' && currentCaseForView) {
-    const cameFromProfile = selectedPatientId !== null;
+    const cameFromProfile = selectedProfileId !== null;
     return (
       <CaseOptionsView
         caseData={currentCaseForView}
@@ -1388,6 +1971,7 @@ export default function Home() {
             ? (claimType) => handleDoctorSelectClaimType(selectedCaseId, claimType)
             : undefined
         }
+        patientCibRecords={getPatientCibRecords(store.cases, currentCaseForView.patientId)}
       />
     );
   }
@@ -1418,9 +2002,30 @@ export default function Home() {
       'referral': 'Referral',
     };
 
+    const isWorkflowA =
+      !store.activeBenefitState ||
+      store.activeBenefitState === 'unregistered' ||
+      store.activeBenefitState === 'pending_cib_review';
+
+    const currentCase = store.cases.find((c) => c.id === (store.currentCaseId || selectedCaseId));
+    const unregisteredDiagnostic =
+      currentClaimType === 'diagnostic' &&
+      (currentCase?.cibEnrollmentStatus === 'unregistered' || isWorkflowA);
+    const workflowSteps = unregisteredDiagnostic
+      ? unregisteredDiagnosticSteps
+      : standardDiagnosticSteps;
+    const medStep = unregisteredDiagnostic ? 5 : 4;
+    const finStep = unregisteredDiagnostic ? 6 : 5;
+    const scheme = currentCase?.medicalScheme ?? getPatientMedicalScheme(store.cases, patientId);
+    const gemsBlocked = scheme === 'gems' && !DataService.isSchemeDataAvailable();
+
+    const conditionCibRecord = store.selectedCondition
+      ? currentCase?.cibRecords?.find((r) => r.conditionName === store.selectedCondition) ??
+        getCibRecordForCondition(store.cases, patientId, store.selectedCondition)
+      : undefined;
+
     return (
       <div className="min-h-screen bg-white">
-        {/* Header */}
         <header className="bg-white border-b border-slate-200 sticky top-0 z-30">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-20">
@@ -1437,18 +2042,29 @@ export default function Home() {
                   <p className="text-sm text-slate-500">{patientName} ({patientId})</p>
                 </div>
               </div>
+              {currentCase?.cibEnrollmentStatus === 'registered' && (
+                <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium">
+                  Registered
+                </span>
+              )}
             </div>
           </div>
         </header>
 
-        {/* Main Content */}
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {currentClaimType === 'diagnostic' && (
+        {gemsBlocked && (
+          <div className="mb-6 rounded-2xl border border-slate-300 bg-slate-100 p-6 text-center">
+            <p className="font-semibold text-slate-800">GEMS scheme data is not yet available</p>
+            <p className="text-sm text-slate-600 mt-2">
+              Switch the patient to Discovery Health at intake to use tailored baskets and formulary rules.
+            </p>
+          </div>
+        )}
+        {currentClaimType === 'diagnostic' && !gemsBlocked && (
           <>
-            {/* Progress Steps */}
-            <div className="mb-8 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm">
-              <div className="flex items-center justify-between">
-                {steps.map((step, index) => (
+            <div className="mb-8 bg-white rounded-2xl border border-slate-200 p-6 shadow-sm overflow-x-auto">
+              <div className="flex items-center justify-between min-w-[640px]">
+                {workflowSteps.map((step, index) => (
                   <div key={step.id} className="flex items-center flex-1">
                     <div className="flex flex-col items-center w-full">
                       <div
@@ -1470,14 +2086,14 @@ export default function Home() {
                         store.currentStep >= step.id ? 'text-slate-900' : 'text-indigo-300'
                       }`}>
                         {step.title}
-                        {step.id === 4 && store.currentStep === 4 && (
+                        {step.id === medStep && store.currentStep === medStep && (
                           <span className="block text-xs text-blue-500 mt-0.5">
                             {store.medicationSubstep === 1 ? '(Selection)' : '(Registration Note)'}
                           </span>
                         )}
                       </span>
                     </div>
-                    {index < steps.length - 1 && (
+                    {index < workflowSteps.length - 1 && (
                       <div className="relative flex-1 mx-4 flex items-center">
                         <div
                           className={`h-1 w-full rounded-full ${
@@ -1529,28 +2145,71 @@ export default function Home() {
               )}
 
               {store.currentStep === 3 && store.selectedCondition && (
-                <DiagnosticBasket
-                  condition={store.selectedCondition}
-                  treatments={store.diagnosticTreatments}
-                  onAddTreatment={store.addDiagnosticTreatment}
-                  onUpdateTreatment={store.updateDiagnosticTreatment}
-                  onRemoveTreatment={(index) => {
-                    const newTreatments = store.diagnosticTreatments.filter((_, i) => i !== index);
-                    useStore.setState({ diagnosticTreatments: newTreatments });
+                <div className="space-y-6">
+                  {unregisteredDiagnostic || isWorkflowA ? (
+                    <DiagnosticBasket
+                      condition={store.selectedCondition}
+                      treatments={store.diagnosticTreatments}
+                      onAddTreatment={store.addDiagnosticTreatment}
+                      onUpdateTreatment={store.updateDiagnosticTreatment}
+                      onRemoveTreatment={(index) => {
+                        const newTreatments = store.diagnosticTreatments.filter((_, i) => i !== index);
+                        useStore.setState({ diagnosticTreatments: newTreatments });
+                      }}
+                    />
+                  ) : (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5">
+                      <p className="text-sm font-semibold text-emerald-900">CIB approved — Workflow B</p>
+                      <p className="text-xs text-emerald-800 mt-2 leading-relaxed">
+                        This patient is on the chronic benefit pathway for {store.selectedCondition}.
+                        Use <strong>Ongoing Management</strong> for treatment basket monitoring.
+                      </p>
+                      {conditionCibRecord?.approvalDate && (
+                        <p className="text-xs text-emerald-700 mt-2">
+                          CIB approved: {conditionCibRecord.approvalDate}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {unregisteredDiagnostic && store.currentStep === 4 && store.selectedCondition && (
+                <DiagnosticEvidenceReview
+                  conditionName={store.selectedCondition}
+                  icdCode={store.selectedIcdCode ?? ''}
+                  clinicalNote={store.clinicalNote}
+                  diagnosticTreatments={store.diagnosticTreatments}
+                  diagnosisDate={store.diagnosisDate}
+                  benefitState={store.activeBenefitState ?? 'unregistered'}
+                  medicationsFormularyAligned={store.medications.every(
+                    (m) => m.formularyStatus === 'listed'
+                  )}
+                  onDiagnosisDateChange={(date) => {
+                    store.setDiagnosisDate(date);
+                    if (date && store.selectedCondition) {
+                      syncCibRecordOnCase({
+                        conditionName: store.selectedCondition,
+                        icd10: store.selectedIcdCode || '',
+                        diagnosisDate: date,
+                        benefitState: store.activeBenefitState ?? 'unregistered',
+                        formularyAligned: true,
+                      });
+                    }
                   }}
                 />
               )}
 
-              {store.currentStep === 4 && store.selectedCondition && (
+              {store.currentStep === medStep && store.selectedCondition && (
                 <>
                   {store.medicationSubstep === 1 && (
                     <MedicationSelection
                       condition={store.selectedCondition}
                       selectedPlan={store.selectedPlan}
+                      benefitState={store.activeBenefitState}
                       medications={store.medications}
                       onAddMedication={store.addMedication}
                       onRemoveMedication={store.removeMedication}
-                      onSetPlan={store.setSelectedPlan}
                     />
                   )}
                   
@@ -1565,44 +2224,77 @@ export default function Home() {
                 </>
               )}
 
-              {store.currentStep === 5 && (
-                <FinalClaimSummary
-                  clinicalNote={store.clinicalNote}
-                  selectedCondition={store.selectedCondition!}
-                  selectedIcdCode={store.selectedIcdCode!}
-                  selectedIcdDescription={store.selectedIcdDescription!}
-                  diagnosticTreatments={store.diagnosticTreatments}
-                  ongoingTreatments={store.ongoingTreatments}
-                  medications={store.medications}
-                  medicationNote={store.medicationNote}
-                  medicationReports={
-                    store.cases.find((c) => c.id === store.currentCaseId)?.medicationReports
-                  }
-                  selectedPlan={store.selectedPlan}
-                  onConfirm={() => setShowSaveModal(true)}
-                  onBack={handlePreviousStep}
-                  confirmLabel="Confirm and Save Claim"
-                />
+              {store.currentStep === finStep && store.selectedCondition && (
+                <div className="space-y-4">
+                  {unregisteredDiagnostic ? (
+                    <CibRegistrationStep
+                      patientName={patientName}
+                      patientId={patientId}
+                      medicalAidNumber={medicalAidNumber}
+                      medicalScheme={scheme}
+                      selectedCondition={store.selectedCondition}
+                      selectedIcdCode={store.selectedIcdCode!}
+                      selectedIcdDescription={store.selectedIcdDescription!}
+                      clinicalNote={store.clinicalNote}
+                      diagnosticTreatments={store.diagnosticTreatments}
+                      medications={store.medications}
+                      medicationNote={store.medicationNote}
+                      diagnosisDate={store.diagnosisDate}
+                      selectedPlan={store.selectedPlan}
+                      benefitState={store.activeBenefitState ?? 'unregistered'}
+                      onBack={handlePreviousStep}
+                      onSubmit={handleCibRegistrationSubmit}
+                      isSubmitting={isCibSubmitting}
+                    />
+                  ) : (
+                    <FinalClaimSummary
+                      clinicalNote={store.clinicalNote}
+                      selectedCondition={store.selectedCondition}
+                      selectedIcdCode={store.selectedIcdCode!}
+                      selectedIcdDescription={store.selectedIcdDescription!}
+                      diagnosticTreatments={store.diagnosticTreatments}
+                      ongoingTreatments={store.ongoingTreatments}
+                      medications={store.medications}
+                      medicationNote={store.medicationNote}
+                      medicationReports={
+                        store.cases.find((c) => c.id === store.currentCaseId)?.medicationReports
+                      }
+                      selectedPlan={store.selectedPlan}
+                      benefitState={store.activeBenefitState}
+                      diagnosisDate={store.diagnosisDate}
+                      cibRecords={currentCase?.cibRecords}
+                      onConfirm={() => {
+                        setClaimCompletionSource('final');
+                        setShowClaimCompletion(true);
+                      }}
+                      onBack={handlePreviousStep}
+                      confirmLabel="Confirm and Save Claim"
+                    />
+                  )}
+                </div>
               )}
 
-              {/* Navigation Buttons */}
-              {store.currentStep > 0 && store.currentStep < 5 && (
+              {store.currentStep > 0 && store.currentStep < finStep && (
                 <div className="flex justify-between">
                   <button
                     onClick={handlePreviousStep}
                     className="btn-secondary flex items-center gap-2"
                   >
                     <ArrowLeft className="w-5 h-5" />
-                    {store.currentStep === 4 && store.medicationSubstep === 2 ? 'Back to Medications' : 'Previous'}
+                    {store.currentStep === medStep && store.medicationSubstep === 2
+                      ? 'Back to Medications'
+                      : 'Previous'}
                   </button>
                   <button
                     onClick={handleNextStep}
                     className="btn-primary flex items-center gap-2"
                   >
-                    {store.currentStep === 4 && store.medicationSubstep === 1
+                    {store.currentStep === medStep && store.medicationSubstep === 1
                       ? 'Continue to Registration Note'
-                      : store.currentStep === 4 && store.medicationSubstep === 2
-                      ? 'Continue to Final Claim'
+                      : store.currentStep === medStep && store.medicationSubstep === 2
+                      ? unregisteredDiagnostic
+                        ? 'Continue to CIB Registration'
+                        : 'Continue to Final Claim'
                       : 'Next'}
                     <ArrowRight className="w-5 h-5" />
                   </button>
@@ -1627,7 +2319,18 @@ export default function Home() {
         {currentClaimType === 'ongoing-management' && (
           <OngoingManagement
             condition={store.selectedCondition || store.cases.find(c => c.id === store.currentCaseId)?.condition || ''}
+            patientId={patientId || store.cases.find(c => c.id === store.currentCaseId)?.patientId || ''}
+            patientCases={
+              (() => {
+                const current = store.cases.find((c) => c.id === store.currentCaseId);
+                return current
+                  ? filterCasesByProfile(store.cases, resolveProfileId(current))
+                  : store.cases;
+              })()
+            }
+            currentCaseId={store.currentCaseId}
             treatments={store.ongoingTreatments}
+            clinicalNote={store.clinicalNote || store.cases.find(c => c.id === store.currentCaseId)?.clinicalNote || ''}
             onAddTreatment={store.addOngoingTreatment}
             onUpdateTreatment={store.updateOngoingTreatment}
             onRemoveTreatment={(index) => {
@@ -1635,6 +2338,17 @@ export default function Home() {
               useStore.setState({ ongoingTreatments: newTreatments });
             }}
             onExportSingleTreatment={handleExportSingleTreatment}
+            onSubmitClinicalAppeal={(appeal) => {
+              if (!store.currentCaseId) return;
+              const existing =
+                store.cases.find((c) => c.id === store.currentCaseId)?.clinicalAppeals ?? [];
+              store.updateCase(store.currentCaseId, {
+                clinicalAppeals: [
+                  ...existing,
+                  { ...appeal, createdAt: new Date() },
+                ],
+              });
+            }}
             onSaveOnly={handleOngoingManagementSaveOnly}
             onSavePdfOnly={handleOngoingManagementSavePdfOnly}
             onSaveWithAttachments={handleOngoingManagementSaveWithAttachments}
@@ -1647,6 +2361,7 @@ export default function Home() {
             medicationNote={store.medicationNote}
             condition={store.selectedCondition || store.cases.find(c => c.id === store.currentCaseId)?.condition || ''}
             selectedPlan={store.selectedPlan}
+            benefitState={store.activeBenefitState}
             onSaveOnly={handleMedicationReportSaveOnly}
             onSavePdfOnly={handleMedicationReportSavePdfOnly}
             onSaveWithAttachments={handleMedicationReportSaveWithAttachments}
@@ -1679,116 +2394,24 @@ export default function Home() {
         })()}
       </main>
 
-      {/* Save Modal */}
-      {showSaveModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-bold mb-2">{userRole === 'doctor' ? 'Confirm Claim' : 'Finalize Patient Case'}</h3>
-            <p className="text-sm text-gray-600 mb-6">
-              {userRole === 'doctor'
-                ? 'Save or export the claim without re-entering the patient information.'
-                : 'Enter patient details to save the case. You can choose to save only or export documents.'}
-            </p>
-            {userRole !== 'doctor' && (
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Patient Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-colors"
-                    placeholder="Enter patient name"
-                    value={patientName}
-                    onChange={(e) => setPatientName(e.target.value)}
-                    disabled={isSaving}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Patient ID / Medical Record Number <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-colors"
-                    placeholder="Enter patient ID or MRN"
-                    value={patientId}
-                    onChange={(e) => setPatientId(e.target.value)}
-                    disabled={isSaving}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Patient Email (Optional)
-                  </label>
-                  <input
-                    type="email"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-colors"
-                    placeholder="patient@example.com"
-                    value={patientEmail}
-                    onChange={(e) => setPatientEmail(e.target.value)}
-                    disabled={isSaving}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Patient Phone (Optional)
-                  </label>
-                  <input
-                    type="tel"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-400 focus:border-primary-400 transition-colors"
-                    placeholder="+27 XX XXX XXXX"
-                    value={patientPhone}
-                    onChange={(e) => setPatientPhone(e.target.value)}
-                    disabled={isSaving}
-                  />
-                </div>
-              </div>
-            )}
+      {cibAssistantModal}
 
-            <div className="mt-6 pt-4 border-t border-gray-200">
-              <p className="text-sm font-medium text-gray-700 mb-3">Save Options:</p>
-              <div className="space-y-2">
-                <button
-                  onClick={handleSaveCaseOnly}
-                  disabled={isSaving}
-                  className="w-full py-3 px-4 bg-gradient-to-r from-green-600 to-emerald-600 text-white font-semibold rounded-lg hover:from-green-700 hover:to-emerald-700 transition-all duration-200 flex items-center justify-center gap-2 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Save className="w-5 h-5" />
-                  {isSaving
-                    ? 'Saving...'
-                    : userRole === 'doctor'
-                    ? 'Confirm and Save Claim'
-                    : 'Save Patient Case'}
-                </button>
-                <p className="text-xs text-gray-500 text-center mb-3">or export documents</p>
-                <button
-                  onClick={() => handleSaveCase(false)}
-                  disabled={isSaving}
-                  className="w-full py-2.5 px-4 bg-primary-400 text-brand-black font-medium rounded-lg hover:bg-primary-500 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Export as PDF
-                </button>
-                <button
-                  onClick={() => handleSaveCase(true)}
-                  disabled={isSaving}
-                  className="w-full py-2.5 px-4 bg-accent-600 text-white font-medium rounded-lg hover:bg-accent-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Export with Attachments (ZIP)
-                </button>
-              </div>
-            </div>
-
-            <button
-              onClick={() => setShowSaveModal(false)}
-              disabled={isSaving}
-              className="w-full mt-4 py-2 px-4 border border-gray-300 text-gray-700 font-medium rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+      <ClaimCompletionModal
+        isOpen={showClaimCompletion}
+        onClose={() => setShowClaimCompletion(false)}
+        patientName={patientName || getPatientInfoForSave().patientName || 'Patient'}
+        patientEmail={patientEmail || getPatientInfoForSave().patientEmail}
+        isDoctor={userRole === 'doctor'}
+        isSubmitting={isSaving}
+        emailDeliveryConfigured={emailDeliveryConfigured}
+        title={claimCompletionSource === 'cib' ? 'CIB registration complete' : 'Claim complete'}
+        subtitle={
+          claimCompletionSource === 'cib'
+            ? 'Patient marked as pending chronic benefit review. Choose how to handle the claim package.'
+            : 'Choose whether to save, export, or send documents to the patient.'
+        }
+        onAction={handleClaimCompletionAction}
+      />
 
       {/* Patient Export Modal */}
       {showPatientExport && getPatientExportData() && (
@@ -1815,7 +2438,12 @@ export default function Home() {
 
   return (
     <div className="flex min-h-screen bg-white">
-      <AppSidebar currentView={currentView} onNavigate={setCurrentView} userRole={userRole} />
+      <AppSidebar
+        currentView={currentView}
+        onNavigate={setCurrentView}
+        onReportsNavigate={handleOpenReports}
+        userRole={userRole}
+      />
       <div className="flex-1 ml-60 min-w-0 overflow-y-auto">
         {renderView()}
       </div>

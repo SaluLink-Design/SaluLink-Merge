@@ -1,15 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowLeft, Eye, User, Activity, Pill, FileSymlink, ChevronDown, ChevronUp, Stethoscope } from 'lucide-react';
+import { ArrowLeft, Eye, User, Activity, Pill, FileSymlink, ChevronDown, ChevronUp, Stethoscope, FileText } from 'lucide-react';
 import { PatientCase, ClaimType } from '@/types';
+import { getPatientEnrollmentStatus } from '@/lib/benefitState';
 import { format } from 'date-fns';
 
 interface PatientProfileProps {
-  patientId: string;
+  profileId: string;
   cases: PatientCase[];
+  allCases?: PatientCase[];
   onViewClaim: (caseId: string) => void;
-  onNewCaseAction: (patientId: string, claimType: ClaimType) => void;
+  onNewCaseAction: (profileId: string, claimType: ClaimType) => void;
+  onViewPatientRecord: (profileId: string) => void;
   onBack: () => void;
   userRole?: string | null;
 }
@@ -29,62 +32,77 @@ const statusBadge: Record<string, { label: string; className: string }> = {
   'completed': { label: 'Completed', className: 'bg-emerald-100 text-emerald-700' },
 };
 
-const caseActionOptions: { claimType: ClaimType; label: string; description: string; icon: React.ReactNode; borderColor: string; textColor: string }[] = [
+const AUTHI_ICON_STROKE = 'url(#authi-stroke-gradient)';
+
+const caseActionOptions: { claimType: ClaimType; label: string; description: string; icon: React.ReactNode }[] = [
   {
     claimType: 'diagnostic',
     label: 'Diagnostic Claim',
     description: 'Identify a new or changed condition — e.g. a patient with hypertension presenting with new asthmatic symptoms.',
-    icon: <Stethoscope className="w-5 h-5" />,
-    borderColor: 'border-blue-200 hover:border-blue-400',
-    textColor: 'text-blue-600',
+    icon: <Stethoscope className="w-5 h-5" stroke={AUTHI_ICON_STROKE} />,
   },
   {
     claimType: 'ongoing-management',
     label: 'Ongoing Management',
     description: 'Record monitoring visits and treatment protocols for this patient.',
-    icon: <Activity className="w-5 h-5" />,
-    borderColor: 'border-emerald-200 hover:border-emerald-400',
-    textColor: 'text-emerald-600',
+    icon: <Activity className="w-5 h-5" stroke={AUTHI_ICON_STROKE} />,
   },
   {
     claimType: 'medication-report',
     label: 'Medication Report',
     description: 'Follow-up notes and new prescriptions for a chronic patient.',
-    icon: <Pill className="w-5 h-5" />,
-    borderColor: 'border-violet-200 hover:border-violet-400',
-    textColor: 'text-violet-600',
+    icon: <Pill className="w-5 h-5" stroke={AUTHI_ICON_STROKE} />,
   },
   {
     claimType: 'referral',
     label: 'Referral',
     description: 'Generate a specialist referral letter for this patient.',
-    icon: <FileSymlink className="w-5 h-5" />,
-    borderColor: 'border-orange-200 hover:border-orange-400',
-    textColor: 'text-orange-600',
+    icon: <FileSymlink className="w-5 h-5" stroke={AUTHI_ICON_STROKE} />,
   },
 ];
 
-const PatientProfile = ({ patientId, cases, onViewClaim, onNewCaseAction, onBack, userRole }: PatientProfileProps) => {
+const PatientProfile = ({
+  profileId,
+  cases,
+  onViewClaim,
+  onNewCaseAction,
+  onViewPatientRecord,
+  onBack,
+  userRole,
+}: PatientProfileProps) => {
   const [showCaseActions, setShowCaseActions] = useState(false);
   const isDoctor = userRole === 'doctor';
-  const isAuthiBrand = userRole === 'doctor' || userRole === 'assistant';
+  const isAssistant = userRole === 'assistant';
+  const isWorkspaceBrand = isDoctor || isAssistant;
 
-  const renderBadge = (label: string, fallbackClassName: string) =>
-    isAuthiBrand ? (
-      <span className="authi-badge-pill">
-        <span>{label}</span>
-      </span>
-    ) : (
+  const portfolioCardClass = 'bg-white rounded-2xl border border-slate-200 shadow-sm';
+
+  const renderBadge = (label: string, fallbackClassName: string) => {
+    if (isWorkspaceBrand) {
+      return (
+        <span className="authi-badge-pill-minimal">
+          <span>{label}</span>
+        </span>
+      );
+    }
+    return (
       <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${fallbackClassName}`}>
         {label}
       </span>
     );
+  };
 
   const sortedCases = [...cases].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
 
   const patient = sortedCases[0];
+  const medicalPatientId = patient?.patientId ?? '';
+  const enrollmentStatus = getPatientEnrollmentStatus(cases, medicalPatientId);
+  const filteredCaseActions =
+    enrollmentStatus === 'unregistered'
+      ? caseActionOptions.filter((o) => o.claimType === 'diagnostic')
+      : caseActionOptions;
 
   return (
     <div className="min-h-screen bg-white">
@@ -100,43 +118,54 @@ const PatientProfile = ({ patientId, cases, onViewClaim, onNewCaseAction, onBack
           </button>
           <div className="flex-1">
             <p className="text-xs uppercase tracking-widest text-slate-400">Patient Portfolio</p>
-            <h1 className="text-2xl font-semibold text-slate-900">{patient?.patientName ?? patientId}</h1>
+            <h1 className="text-2xl font-semibold text-slate-900">{patient?.patientName ?? 'Patient'}</h1>
           </div>
-          {isDoctor && (
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
-              onClick={() => setShowCaseActions((v) => !v)}
-              className="flex items-center gap-2 px-5 py-2.5 authi-gradient text-white text-sm font-semibold rounded-xl hover:opacity-90 transition shadow-md shadow-[#6366f1]/20"
+              type="button"
+              onClick={() => onViewPatientRecord(profileId)}
+              className="flex items-center gap-2 px-4 py-2.5 border border-slate-300 bg-white text-slate-800 text-sm font-semibold rounded-xl hover:border-[#6366f1]/40 hover:bg-slate-50 transition"
             >
-              + New Case Action
-              {showCaseActions ? (
-                <ChevronUp className="w-4 h-4" />
-              ) : (
-                <ChevronDown className="w-4 h-4" />
-              )}
+              <FileText className="w-4 h-4 text-[#6366f1]" />
+              View patient record
             </button>
-          )}
+            {isDoctor && (
+              <button
+                type="button"
+                onClick={() => setShowCaseActions((v) => !v)}
+                className="flex items-center gap-2 px-5 py-2.5 authi-gradient text-white text-sm font-semibold rounded-xl hover:opacity-90 transition shadow-md shadow-[#6366f1]/20"
+              >
+                + New Case Action
+                {showCaseActions ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Inline case action panel */}
         {showCaseActions && isDoctor && (
-          <div className="border-t border-[#6366f1]/15 authi-tint">
+          <div className="border-t border-slate-200 bg-slate-50">
             <div className="max-w-5xl mx-auto px-6 py-5">
-              <p className="text-xs uppercase tracking-widest authi-gradient-text font-semibold mb-4">
+              <p className="text-xs uppercase tracking-widest text-slate-900 font-semibold mb-4">
                 Select a case action for {patient?.patientName}
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {caseActionOptions.map((opt) => (
+                {filteredCaseActions.map((opt) => (
                   <button
                     key={opt.claimType}
                     type="button"
                     onClick={() => {
                       setShowCaseActions(false);
-                      onNewCaseAction(patientId, opt.claimType);
+                      onNewCaseAction(profileId, opt.claimType);
                     }}
-                    className="authi-action-card"
+                    className="authi-action-card-gradient-border"
                   >
                     <span className="flex items-center gap-2 font-semibold text-sm">
-                      <span className="text-[#6366f1]">{opt.icon}</span>
+                      <span className="authi-icon-gradient">{opt.icon}</span>
                       <span className="authi-gradient-text">{opt.label}</span>
                     </span>
                     <span className="text-xs leading-relaxed text-slate-500">{opt.description}</span>
@@ -151,16 +180,16 @@ const PatientProfile = ({ patientId, cases, onViewClaim, onNewCaseAction, onBack
       <div className="max-w-5xl mx-auto px-6 py-8">
         {/* Patient Info Card */}
         {patient && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 mb-6 shadow-sm">
+          <div className={`${portfolioCardClass} p-6 mb-6`}>
             <div className="flex items-center gap-4 mb-5">
               <div
                 className={
-                  isAuthiBrand
+                  isWorkspaceBrand
                     ? 'authi-avatar-lg w-14 h-14'
                     : 'w-14 h-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center'
                 }
               >
-                <User className={`w-7 h-7 ${isAuthiBrand ? 'text-white' : 'text-blue-400'}`} />
+                <User className={`w-7 h-7 ${isWorkspaceBrand ? 'text-white' : 'text-blue-400'}`} />
               </div>
               <div>
                 <h2 className="text-xl font-semibold text-slate-900">{patient.patientName}</h2>
@@ -172,6 +201,8 @@ const PatientProfile = ({ patientId, cases, onViewClaim, onNewCaseAction, onBack
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               {[
                 ['Medical Aid', patient.medicalAidNumber || '—'],
+                ['Scheme', patient.medicalScheme === 'gems' ? 'GEMS' : 'Discovery Health'],
+                ['CIB Status', patient.cibEnrollmentStatus === 'registered' ? 'Registered' : 'Not registered'],
                 ['Plan', patient.plan],
                 ['Email', patient.patientEmail || '—'],
                 ['Phone', patient.patientPhone || '—'],
@@ -186,7 +217,7 @@ const PatientProfile = ({ patientId, cases, onViewClaim, onNewCaseAction, onBack
         )}
 
         {/* Claims List */}
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className={`${portfolioCardClass} overflow-hidden`}>
           <div className="px-6 py-4 border-b border-slate-200">
             <h3 className="font-semibold text-slate-900">Claims ({sortedCases.length})</h3>
           </div>
@@ -222,11 +253,13 @@ const PatientProfile = ({ patientId, cases, onViewClaim, onNewCaseAction, onBack
                     <button
                       onClick={() => onViewClaim(claim.id)}
                       className={`ml-4 flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
-                        isAuthiBrand ? 'authi-link' : 'font-medium text-blue-600 hover:bg-blue-50'
+                        isWorkspaceBrand ? 'authi-link' : 'font-medium text-blue-600 hover:bg-blue-50'
                       }`}
                     >
-                      <Eye className={`w-4 h-4 shrink-0 ${isAuthiBrand ? 'text-[#6366f1]' : ''}`} />
-                      <span className={isAuthiBrand ? 'authi-gradient-text font-medium' : ''}>View Claim</span>
+                      <Eye className={`w-4 h-4 shrink-0 ${isWorkspaceBrand ? 'text-[#6366f1]' : ''}`} />
+                      <span className={isWorkspaceBrand ? 'authi-gradient-text font-medium' : ''}>
+                        {claim.status === 'completed' ? 'View Claim' : 'View Case'}
+                      </span>
                     </button>
                   </div>
                 );

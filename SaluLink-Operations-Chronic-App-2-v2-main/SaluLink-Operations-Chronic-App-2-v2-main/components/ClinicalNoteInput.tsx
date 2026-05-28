@@ -15,9 +15,10 @@ const ClinicalNoteInput = ({ value, onChange, onAnalyze, isAnalyzing }: Clinical
     <div className="card">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-bold text-slate-900">Clinical Note</h2>
-        <div className="flex items-center gap-2 text-sm text-violet-600 font-medium">
+        <div className="flex items-center gap-2 text-sm font-medium">
           <Sparkles className="w-4 h-4 text-violet-500" />
-          <span>Powered by Authi</span>
+          <span className="text-slate-500">Powered by </span>
+          <span className="brand-link-gradient-text">Authi</span>
         </div>
       </div>
       

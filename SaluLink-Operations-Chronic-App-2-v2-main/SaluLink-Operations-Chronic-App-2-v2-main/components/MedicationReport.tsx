@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { SelectedMedication } from '@/types';
+import { SelectedMedication, BenefitState } from '@/types';
 import { FileText, Plus, CheckCircle, Upload } from 'lucide-react';
 import MedicationSelection from './MedicationSelection';
 import FileUploadWithRename from './FileUploadWithRename';
@@ -11,6 +11,7 @@ interface MedicationReportProps {
   medicationNote: string;
   condition: string;
   selectedPlan: any;
+  benefitState?: BenefitState | null;
   onSaveOnly: (followUpNotes: string, newMedications?: SelectedMedication[], motivationLetter?: string, documentation?: { notes: string; images: string[] }) => void;
   onSavePdfOnly: (followUpNotes: string, newMedications?: SelectedMedication[], motivationLetter?: string, documentation?: { notes: string; images: string[] }) => void;
   onSaveWithAttachments: (followUpNotes: string, newMedications?: SelectedMedication[], motivationLetter?: string, documentation?: { notes: string; images: string[] }) => void;
@@ -21,10 +22,21 @@ const MedicationReport = ({
   medicationNote,
   condition,
   selectedPlan,
+  benefitState,
   onSaveOnly,
   onSavePdfOnly,
   onSaveWithAttachments
 }: MedicationReportProps) => {
+  const renderCoverageBadge = (status: SelectedMedication['formularyStatus']) => (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+        status === 'listed' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+      }`}
+    >
+      {status === 'listed' ? 'Fully covered (formulary)' : 'Cap-limited (unlisted)'}
+    </span>
+  );
+
   const [followUpNotes, setFollowUpNotes] = useState('');
   const [addingNew, setAddingNew] = useState(false);
   const [newMedications, setNewMedications] = useState<SelectedMedication[]>([]);
@@ -53,18 +65,33 @@ const MedicationReport = ({
     };
   };
 
+  const validateUnlistedRationale = (meds?: SelectedMedication[]) => {
+    const list = meds ?? newMedications;
+    const missingRationale = list.filter(
+      (med) => med.formularyStatus === 'unlisted' && !med.unlistedClinicalRationale?.trim()
+    );
+    if (missingRationale.length > 0) {
+      alert('Clinical rationale is required for unlisted medications before saving.');
+      return false;
+    }
+    return true;
+  };
+
   const handleSaveOnly = () => {
+    if (!validateUnlistedRationale()) return;
     const { documentation, followUpNotes, newMedications, motivationLetter } = getReportPayload();
     onSaveOnly(followUpNotes, newMedications, motivationLetter, documentation);
   };
 
   const handleSavePdfOnly = () => {
+    if (!validateUnlistedRationale()) return;
     const { documentation, followUpNotes, newMedications, motivationLetter } = getReportPayload();
 
     onSavePdfOnly(followUpNotes, newMedications, motivationLetter, documentation);
   };
 
   const handleSaveWithAttachments = () => {
+    if (!validateUnlistedRationale()) return;
     const { documentation, followUpNotes, newMedications, motivationLetter } = getReportPayload();
 
     onSaveWithAttachments(
@@ -94,9 +121,24 @@ const MedicationReport = ({
           <div className="space-y-2">
             {currentMedications.map((med, index) => (
               <div key={index} className="p-3 brand-card-selected">
-                <p className="font-medium text-slate-900">{med.medicineNameAndStrength}</p>
-                <p className="text-sm text-slate-500">{med.activeIngredient}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium text-slate-900">{med.activeIngredient || 'Unknown ingredient'}</p>
+                  {renderCoverageBadge(med.formularyStatus)}
+                </div>
+                <p className="text-sm text-slate-500">Brand: {med.medicineNameAndStrength}</p>
+                <p className="text-xs text-slate-500 mt-0.5">Class: {med.medicineClass}</p>
                 <p className="text-sm text-violet-600 font-semibold">CDA: {med.cdaAmount}</p>
+                <p className="text-xs text-slate-600 mt-1">{med.coverageNote}</p>
+                {med.copayRisk && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    Co-pay risk: patient may pay above CDA cap.
+                  </p>
+                )}
+                {med.unlistedClinicalRationale && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    Clinical rationale: {med.unlistedClinicalRationale}
+                  </p>
+                )}
               </div>
             ))}
           </div>
@@ -156,6 +198,7 @@ const MedicationReport = ({
             <MedicationSelection
               condition={condition}
               selectedPlan={selectedPlan}
+              benefitState={benefitState}
               medications={newMedications}
               onAddMedication={handleAddNewMedication}
               onRemoveMedication={handleRemoveNewMedication}

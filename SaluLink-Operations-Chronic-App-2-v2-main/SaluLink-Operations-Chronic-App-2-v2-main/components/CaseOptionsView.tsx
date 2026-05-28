@@ -2,8 +2,11 @@
 
 import type { ReactNode } from 'react';
 import { ArrowLeft, FileText, ClipboardList, Download, Archive, Stethoscope, Activity, Pill, FileSymlink } from 'lucide-react';
-import { PatientCase, ClaimType } from '@/types';
+import { PatientCase, ClaimType, CibRecord } from '@/types';
 import { format } from 'date-fns';
+import { claimTypeRecommendation, benefitStateLabel } from '@/lib/benefitState';
+import BenefitStateBadge from '@/components/BenefitStateBadge';
+import { normalizePatientCase } from '@/lib/normalizePatientCase';
 
 interface CaseOptionsViewProps {
   caseData: PatientCase;
@@ -14,6 +17,7 @@ interface CaseOptionsViewProps {
   onExportPdf?: () => void;
   onExportZip?: () => void;
   onSelectClaimType?: (claimType: ClaimType) => void;
+  patientCibRecords?: CibRecord[];
 }
 
 const claimTypeLabels: Record<ClaimType, string> = {
@@ -83,12 +87,40 @@ const CaseOptionsView = ({
   onExportPdf,
   onExportZip,
   onSelectClaimType,
+  patientCibRecords = [],
 }: CaseOptionsViewProps) => {
-  const isNew = caseData.status === 'new';
-  const isCompleted = caseData.status === 'completed';
-  const canExport = isCompleted || (Boolean(caseData.condition) && Boolean(caseData.icdCode));
-  const needsClaimType = !readOnly && !caseData.claimType;
-  const claimTypeLabel = caseData.claimType ? claimTypeLabels[caseData.claimType] : null;
+  const caseRecord = normalizePatientCase(caseData);
+  const conditionCib = caseRecord.condition
+    ? patientCibRecords.find((r) => r.conditionName === caseRecord.condition) ??
+      caseRecord.cibRecords?.find((r) => r.conditionName === caseRecord.condition)
+    : undefined;
+  const benefitState = conditionCib?.benefitState;
+  const claimRec = caseRecord.claimType
+    ? claimTypeRecommendation(benefitState, caseRecord.claimType)
+    : claimTypeRecommendation(benefitState, 'diagnostic');
+
+  const isNew = caseRecord.status === 'new';
+  const isCompleted = caseRecord.status === 'completed';
+  const canExport = isCompleted || (Boolean(caseRecord.condition) && Boolean(caseRecord.icdCode));
+  const isUnregisteredNew =
+    caseRecord.cibEnrollmentStatus === 'unregistered' && isNew;
+  const needsClaimType = !readOnly && !caseRecord.claimType && !isUnregisteredNew;
+  const claimTypeLabel = caseRecord.claimType ? claimTypeLabels[caseRecord.claimType] : null;
+
+  const availableClaimTypes = isUnregisteredNew
+    ? doctorClaimTypeOptions.filter((o) => o.value === 'diagnostic')
+    : doctorClaimTypeOptions;
+
+  const showPendingConditionCib =
+    caseRecord.claimType === 'diagnostic' && conditionCib?.benefitState === 'pending_cib_review';
+
+  const cibEnrollmentLabel =
+    caseRecord.cibEnrollmentStatus === 'registered' ? 'Registered' : 'Not registered';
+
+  const handleStartUnregisteredDiagnostic = () => {
+    onSelectClaimType?.('diagnostic');
+    onStartClinicalNote();
+  };
 
   const exportPdfButton = (
     <button
@@ -141,7 +173,7 @@ const CaseOptionsView = ({
               )}
             </div>
             <p className="text-sm text-slate-500">
-              Created {format(new Date(caseData.createdAt), 'MMM dd, yyyy')}
+              Created {format(new Date(caseRecord.createdAt), 'MMM dd, yyyy')}
             </p>
           </div>
         </div>
@@ -150,12 +182,13 @@ const CaseOptionsView = ({
         <SectionCard title="Patient Information">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {[
-              ['Patient Name', caseData.patientName],
-              ['Patient ID', caseData.patientId],
-              ['Medical Aid Number', caseData.medicalAidNumber || 'N/A'],
-              ['Medical Plan', caseData.plan || 'Not selected'],
-              ['Email', caseData.patientEmail || 'N/A'],
-              ['Phone', caseData.patientPhone || 'N/A'],
+              ['Patient Name', caseRecord.patientName],
+              ['Patient ID', caseRecord.patientId],
+              ['CIB Status', cibEnrollmentLabel],
+              ['Medical Aid Number', caseRecord.medicalAidNumber || 'N/A'],
+              ['Medical Plan', caseRecord.plan || 'Not selected'],
+              ['Email', caseRecord.patientEmail || 'N/A'],
+              ['Phone', caseRecord.patientPhone || 'N/A'],
             ].map(([label, value]) => (
               <div key={label}>
                 <p className="text-xs text-slate-500">{label}</p>
@@ -166,30 +199,30 @@ const CaseOptionsView = ({
         </SectionCard>
 
         {/* Condition */}
-        {caseData.condition && (
+        {caseRecord.condition && (
           <SectionCard title="Condition">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <p className="text-xs text-slate-500">Condition</p>
-                <p className="text-sm font-semibold text-slate-900 mt-0.5">{caseData.condition}</p>
+                <p className="text-sm font-semibold text-slate-900 mt-0.5">{caseRecord.condition}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-500">ICD-10 Code</p>
-                <p className="text-sm font-semibold text-slate-900 mt-0.5">{caseData.icdCode}</p>
+                <p className="text-sm font-semibold text-slate-900 mt-0.5">{caseRecord.icdCode}</p>
               </div>
               <div>
                 <p className="text-xs text-slate-500">Description</p>
-                <p className="text-sm font-semibold text-slate-900 mt-0.5 truncate">{caseData.icdDescription}</p>
+                <p className="text-sm font-semibold text-slate-900 mt-0.5 truncate">{caseRecord.icdDescription}</p>
               </div>
             </div>
           </SectionCard>
         )}
 
         {/* Ongoing Treatments */}
-        {caseData.ongoingTreatments.length > 0 && (
-          <SectionCard title={`Ongoing Treatments (${caseData.ongoingTreatments.length})`}>
+        {caseRecord.ongoingTreatments.length > 0 && (
+          <SectionCard title={`Ongoing Treatments (${caseRecord.ongoingTreatments.length})`}>
             <ul className="space-y-2">
-              {caseData.ongoingTreatments.map((t, i) => (
+              {caseRecord.ongoingTreatments.map((t, i) => (
                 <li key={i} className="text-sm text-slate-800">
                   <span className="font-medium">{t.description}</span>
                   {t.code ? ` — ${t.code}` : ''}
@@ -200,13 +233,25 @@ const CaseOptionsView = ({
         )}
 
         {/* Medications */}
-        {caseData.medications.length > 0 && (
-          <SectionCard title={`Medications (${caseData.medications.length})`}>
+        {caseRecord.medications.length > 0 && (
+          <SectionCard title={`Medications (${caseRecord.medications.length})`}>
             <ul className="space-y-2">
-              {caseData.medications.map((m, i) => (
+              {caseRecord.medications.map((m, i) => (
                 <li key={i} className="text-sm text-slate-800">
                   <span className="font-medium">{m.medicineNameAndStrength}</span>
                   {m.activeIngredient ? ` (${m.activeIngredient})` : ''}
+                  <span
+                    className={`ml-2 inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                      m.formularyStatus === 'unlisted'
+                        ? 'bg-amber-100 text-amber-700'
+                        : 'bg-emerald-100 text-emerald-700'
+                    }`}
+                  >
+                    {m.formularyStatus === 'unlisted' ? 'Cap-limited' : 'Fully covered'}
+                  </span>
+                  {m.copayRisk && (
+                    <span className="ml-2 text-xs text-amber-700">Co-pay risk</span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -214,10 +259,10 @@ const CaseOptionsView = ({
         )}
 
         {/* Medication Reports */}
-        {(caseData.medicationReports?.length ?? 0) > 0 && (
-          <SectionCard title={`Medication Reports (${caseData.medicationReports!.length})`}>
+        {(caseRecord.medicationReports?.length ?? 0) > 0 && (
+          <SectionCard title={`Medication Reports (${caseRecord.medicationReports!.length})`}>
             <div className="space-y-3">
-              {caseData.medicationReports!.map((r, i) => (
+              {caseRecord.medicationReports!.map((r, i) => (
                 <div key={r.id ?? i} className="authi-sub-card">
                   <p className="text-xs font-semibold authi-gradient-text uppercase tracking-wide mb-1">
                     Report {i + 1}
@@ -234,29 +279,62 @@ const CaseOptionsView = ({
           </SectionCard>
         )}
 
-        {/* Doctor claim type selector */}
+        {showPendingConditionCib && conditionCib && (
+          <SectionCard title="Condition CIB status">
+            <BenefitStateBadge cibRecords={[conditionCib]} expanded />
+          </SectionCard>
+        )}
+
+        {/* Unregistered new case — diagnostic only */}
+        {isUnregisteredNew && !readOnly && !caseRecord.claimType && (
+          <button
+            type="button"
+            onClick={handleStartUnregisteredDiagnostic}
+            className="authi-btn-primary w-full px-6 py-4 rounded-2xl text-base flex items-center justify-center gap-2"
+          >
+            <Stethoscope className="w-5 h-5" />
+            Start diagnostic workflow
+          </button>
+        )}
+
+        {/* Doctor claim type selector (registered patients) */}
         {needsClaimType && onSelectClaimType && (
           <div className="authi-section-card">
             <h2 className="text-sm font-semibold authi-gradient-text mb-1">Select Claim Type</h2>
             <p className="text-sm text-slate-500 mb-4">
-              Patient details were captured by the assistant. Choose the claim type before starting the workflow.
+              Patient is registered on CIB. Choose a diagnostic claim for a new condition, or ongoing
+              management, medication report, or referral.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {doctorClaimTypeOptions.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => onSelectClaimType(opt.value)}
-                  className="authi-action-card"
-                >
-                  <span className="flex items-center gap-2 font-semibold text-sm">
-                    <span className="text-[#6366f1]">{opt.icon}</span>
-                    <span className="authi-gradient-text">{opt.label}</span>
-                  </span>
-                  <span className="text-xs leading-relaxed text-slate-500">{opt.description}</span>
-                </button>
-              ))}
+              {availableClaimTypes.map((opt) => {
+                const isRecommended = opt.value === claimRec.recommended;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => onSelectClaimType(opt.value)}
+                    className={`authi-action-card text-left ${isRecommended ? 'ring-2 ring-[#6366f1]/40' : ''}`}
+                  >
+                    <span className="flex items-center gap-2 font-semibold text-sm flex-wrap">
+                      <span className="text-[#6366f1]">{opt.icon}</span>
+                      <span className="authi-gradient-text">{opt.label}</span>
+                      {isRecommended && (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">
+                          Recommended
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-xs leading-relaxed text-slate-500">{opt.description}</span>
+                  </button>
+                );
+              })}
             </div>
+          </div>
+        )}
+
+        {caseRecord.claimType && !claimRec.aligned && benefitState && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {claimRec.hint}
           </div>
         )}
 
@@ -271,7 +349,7 @@ const CaseOptionsView = ({
                 </>
               ) : (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-                  {needsClaimType || !caseData.claimType
+                  {needsClaimType || !caseRecord.claimType
                     ? 'Patient details saved. The doctor will choose the claim type and complete the case before exports are available.'
                     : 'Exports are available after the doctor has saved and completed the claim.'}
                 </div>
@@ -279,7 +357,7 @@ const CaseOptionsView = ({
             </>
           ) : (
             <>
-              {isNew && !needsClaimType ? (
+              {(isNew && !needsClaimType && !isUnregisteredNew) || (isUnregisteredNew && caseRecord.claimType === 'diagnostic') ? (
                 <button
                   onClick={onStartClinicalNote}
                   className="authi-btn-primary w-full px-6 py-4 rounded-2xl text-base flex items-center justify-center gap-2"

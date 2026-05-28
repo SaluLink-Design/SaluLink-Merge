@@ -1668,6 +1668,343 @@ async def analyze_clinical_note(request: AnalysisRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ---------------------------------------------------------------------------
+# CIB Readiness Endpoint — Workflow A (pre-approval evidence generation)
+# ---------------------------------------------------------------------------
+
+class CibReadinessRequest(BaseModel):
+    clinical_note: str
+    condition_name: str
+    icd_code: str
+    has_lab_results: bool = False
+    has_imaging: bool = False
+    has_diagnosis_date: bool = False
+    benefit_state: str = "unregistered"  # unregistered | pending_cib_review
+
+
+class EvidenceItem(BaseModel):
+    item: str
+    present: bool
+    weight: int  # Contribution to score (0-100 total)
+
+
+class CibReadinessResponse(BaseModel):
+    evidence_score: int          # 0-100
+    evidence_items: list[EvidenceItem]
+    missing_items: list[str]
+    pmb_eligible: bool
+    pmb_explanation: str
+    predicted_funding_source: str  # day-to-day | msa | pmb_pending | chronic_benefit
+    funding_source_explanation: str
+    readiness_level: str         # not_ready | partial | ready
+    recommendations: list[str]
+
+
+# Conditions that appear in the PMB CDL (Chronic Disease List) — derived from treatment basket data
+PMB_CDL_CONDITIONS = {
+    "addison's disease", "asthma", "bronchiectasis", "cardiac failure",
+    "cardiomyopathy", "chronic obstructive pulmonary disease", "copd",
+    "coronary artery disease", "crohn's disease", "diabetes insipidus",
+    "diabetes mellitus type 1", "diabetes mellitus type 2", "diabetes mellitus",
+    "dysrhythmias", "epilepsy", "glaucoma", "haemophilia",
+    "hyperlipidaemia", "hypothyroidism", "multiple sclerosis",
+    "parkinson's disease", "rheumatoid arthritis", "schizophrenia",
+    "systemic lupus erythematosus", "sle", "ulcerative colitis",
+    "hypertension", "hiv", "aids", "chronic kidney disease", "ckd",
+    "bipolar disorder", "depression", "anxiety disorder",
+}
+
+
+def check_pmb_eligibility(condition_name: str, icd_code: str) -> tuple[bool, str]:
+    """Check if condition appears on the PMB CDL list."""
+    condition_lower = condition_name.lower().strip()
+    # Direct match
+    for pmb_condition in PMB_CDL_CONDITIONS:
+        if pmb_condition in condition_lower or condition_lower in pmb_condition:
+            return True, f"'{condition_name}' matches the PMB CDL entry '{pmb_condition}'. This condition qualifies for Prescribed Minimum Benefit coverage once the CIB application is approved."
+    # ICD prefix match for common PMB ranges
+    icd_prefix = icd_code.upper()[:3] if icd_code else ""
+    pmb_icd_prefixes = {
+        "E10", "E11", "E14",  # Diabetes
+        "I10", "I11", "I12", "I13",  # Hypertension / cardiac
+        "I25",  # Coronary artery disease
+        "I42", "I43",  # Cardiomyopathy
+        "I50",  # Cardiac failure
+        "J44", "J45",  # COPD, Asthma
+        "J47",  # Bronchiectasis
+        "K50", "K51",  # Crohn's, Ulcerative colitis
+        "G20",  # Parkinson's
+        "G35",  # Multiple sclerosis
+        "G40",  # Epilepsy
+        "H40",  # Glaucoma
+        "M05", "M06",  # Rheumatoid arthritis
+        "M32",  # SLE
+        "F20",  # Schizophrenia
+        "B20", "B21", "B22", "B23", "B24",  # HIV/AIDS
+        "N18",  # CKD
+    }
+    if icd_prefix in pmb_icd_prefixes:
+        return True, f"ICD-10 code '{icd_code}' falls within PMB-covered diagnostic range. This condition qualifies for Prescribed Minimum Benefit coverage."
+    return False, f"'{condition_name}' (ICD: {icd_code}) does not appear to match the standard PMB CDL list. Verify against the latest Discovery PMB schedule or consult the treating specialist."
+
+
+def predict_funding_source(benefit_state: str, formulary_likely: bool) -> tuple[str, str]:
+    """Predict which funding bucket will cover treatment at this benefit state."""
+    if benefit_state == "approved_chronic":
+        return "chronic_benefit", "CIB is approved — claims route to Chronic Illness Benefit funding."
+    if benefit_state == "pending_cib_review":
+        return "pmb_pending", "CIB application submitted but not yet approved. Treatment may temporarily draw from day-to-day benefits or MSA. Once approved, Discovery may retrospectively recognise claims back to the diagnosis date."
+    if benefit_state == "unregistered":
+        return "day-to-day", "No CIB registration exists. All claims currently route to day-to-day benefits or the Medical Savings Account. Submit a CIB application to access dedicated chronic funding."
+    return "chronic_benefit", "Benefit state indicates chronic cover is active."
+
+
+@app.post("/evaluate-cib-readiness", response_model=CibReadinessResponse)
+async def evaluate_cib_readiness(request: CibReadinessRequest):
+    """
+    Authi Workflow A Intelligence — pre-CIB approval evidence generation assistant.
+
+    Evaluates:
+    - Evidence completeness for the CIB application
+    - PMB CDL eligibility
+    - Predicted funding bucket given current benefit state
+    - Specific recommendations to improve CIB readiness
+    """
+    try:
+        evidence_items = [
+            EvidenceItem(item="ICD-10 code provided", present=bool(request.icd_code and request.icd_code.strip()), weight=20),
+            EvidenceItem(item="Diagnosis date recorded", present=request.has_diagnosis_date, weight=20),
+            EvidenceItem(item="Laboratory results attached", present=request.has_lab_results, weight=20),
+            EvidenceItem(item="Imaging / radiology attached", present=request.has_imaging, weight=15),
+            EvidenceItem(item="Clinical note with condition detail", present=len(request.clinical_note.strip()) > 50, weight=15),
+            EvidenceItem(item="Condition name provided", present=bool(request.condition_name and request.condition_name.strip()), weight=10),
+        ]
+
+        evidence_score = sum(item.weight for item in evidence_items if item.present)
+        missing_items = [item.item for item in evidence_items if not item.present]
+
+        pmb_eligible, pmb_explanation = check_pmb_eligibility(request.condition_name, request.icd_code)
+        formulary_likely = bool(request.icd_code)  # Simplified — full formulary check done on frontend
+        predicted_funding_source, funding_explanation = predict_funding_source(request.benefit_state, formulary_likely)
+
+        if evidence_score >= 80:
+            readiness_level = "ready"
+        elif evidence_score >= 50:
+            readiness_level = "partial"
+        else:
+            readiness_level = "not_ready"
+
+        recommendations: list[str] = []
+        if not request.has_diagnosis_date:
+            recommendations.append("Ask the doctor to confirm and record the date of diagnosis — Discovery requires this for retrospective benefit recognition.")
+        if not request.has_lab_results:
+            recommendations.append("Attach relevant pathology results (e.g. HbA1c, lipid panel, eGFR) to support the CIB application.")
+        if not request.has_imaging:
+            recommendations.append("Attach any relevant imaging or specialist reports if available for this condition.")
+        if not pmb_eligible:
+            recommendations.append("Verify PMB CDL eligibility with the treating doctor before submitting the CIB application.")
+        if request.benefit_state in ("unregistered", "pending_cib_review"):
+            recommendations.append("Submit the CIB application form with all supporting evidence to activate chronic benefit funding and avoid treatment-to-funding lag.")
+        if evidence_score < 80:
+            recommendations.append(f"Current evidence completeness is {evidence_score}/100. Address missing items before submission to reduce rejection risk.")
+
+        return CibReadinessResponse(
+            evidence_score=evidence_score,
+            evidence_items=evidence_items,
+            missing_items=missing_items,
+            pmb_eligible=pmb_eligible,
+            pmb_explanation=pmb_explanation,
+            predicted_funding_source=predicted_funding_source,
+            funding_source_explanation=funding_explanation,
+            readiness_level=readiness_level,
+            recommendations=recommendations,
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Ongoing Assessment Endpoint — Workflow B (post-approval management)
+# ---------------------------------------------------------------------------
+
+class OngoingAssessmentRequest(BaseModel):
+    clinical_note: str
+    condition_name: str
+    icd_code: str
+    basket_items_used: int = 0      # How many basket items used this year
+    basket_total_allowed: int = 0   # Total basket allowance for the year
+    current_medications: list[str] = []  # List of medicine names currently prescribed
+    benefit_state: str = "approved_chronic"
+
+
+class StabilitySignal(BaseModel):
+    signal: str           # controlled | deteriorating | escalation_needed | insufficient_data
+    confidence: float     # 0.0 - 1.0
+    explanation: str
+
+
+class OngoingAssessmentResponse(BaseModel):
+    stability_signal: StabilitySignal
+    basket_utilisation_pct: float     # 0-100
+    basket_headroom: int              # remaining uses
+    basket_status: str                # within_limits | approaching_limit | exhausted
+    monitoring_due: list[str]         # Monitoring items likely overdue
+    formulary_drift_detected: bool
+    formulary_drift_note: str
+    escalation_recommended: bool
+    recommendations: list[str]
+
+
+DETERIORATION_KEYWORDS = [
+    "worsening", "deterioration", "declining", "uncontrolled", "poorly controlled",
+    "exacerbation", "flare", "acute", "emergency", "hospital", "admitted",
+    "increased symptoms", "not responding", "treatment failure", "resistant",
+    "complication", "decompensated", "progressive", "severe", "critical",
+    "breathless at rest", "chest pain", "hypoglycaemia", "hypoglycemia",
+    "syncope", "palpitations", "oedema", "edema", "renal impairment",
+]
+
+CONTROLLED_KEYWORDS = [
+    "well controlled", "stable", "no change", "maintaining", "good control",
+    "within target", "normal range", "responding well", "improved", "better",
+    "asymptomatic", "compliant", "adherent", "satisfactory", "no complaints",
+    "routine follow-up", "medication unchanged", "blood pressure controlled",
+    "glucose within range", "hba1c within target",
+]
+
+MONITORING_BY_CONDITION = {
+    "diabetes": ["HbA1c measurement", "Fasting glucose", "Renal function (eGFR/creatinine)", "Urine albumin:creatinine ratio"],
+    "hypertension": ["Blood pressure measurement", "Renal function", "ECG (annual)"],
+    "asthma": ["Peak flow / spirometry", "Asthma control questionnaire", "Inhaler technique review"],
+    "copd": ["FEV1/FVC spirometry", "Oxygen saturation", "BMI and nutritional status"],
+    "cardiac failure": ["BNP / NT-proBNP", "Echo (annual)", "Renal function", "Weight monitoring"],
+    "hypothyroidism": ["TSH", "Free T4"],
+    "hyperlipidaemia": ["Full lipid panel", "Liver function (if on statin)"],
+    "rheumatoid arthritis": ["CRP / ESR", "DAS28 score", "Joint function assessment"],
+    "epilepsy": ["Seizure diary review", "Drug levels if applicable"],
+    "glaucoma": ["IOP measurement", "Visual field test"],
+}
+
+
+def get_stability_signal(clinical_note: str) -> StabilitySignal:
+    note_lower = clinical_note.lower()
+    deterioration_hits = sum(1 for kw in DETERIORATION_KEYWORDS if kw in note_lower)
+    controlled_hits = sum(1 for kw in CONTROLLED_KEYWORDS if kw in note_lower)
+
+    if len(clinical_note.strip()) < 30:
+        return StabilitySignal(
+            signal="insufficient_data",
+            confidence=0.9,
+            explanation="Clinical note is too brief to assess condition stability. Add more detail about symptoms, measurements, and patient response to treatment."
+        )
+
+    if deterioration_hits >= 2:
+        return StabilitySignal(
+            signal="escalation_needed",
+            confidence=min(0.5 + deterioration_hits * 0.1, 0.95),
+            explanation=f"Note contains {deterioration_hits} deterioration indicator(s). Consider urgent review, specialist referral, or treatment escalation."
+        )
+    if deterioration_hits == 1:
+        return StabilitySignal(
+            signal="deteriorating",
+            confidence=0.6,
+            explanation="Note contains a deterioration indicator. Monitor closely and review treatment plan at next visit."
+        )
+    if controlled_hits >= 1:
+        return StabilitySignal(
+            signal="controlled",
+            confidence=min(0.5 + controlled_hits * 0.1, 0.9),
+            explanation=f"Note contains {controlled_hits} stability indicator(s). Condition appears to be managed within acceptable parameters."
+        )
+    return StabilitySignal(
+        signal="insufficient_data",
+        confidence=0.5,
+        explanation="Note does not contain clear stability or deterioration indicators. Add clinical measurements, patient-reported outcomes, or treatment response details."
+    )
+
+
+def get_monitoring_due(condition_name: str, basket_items_used: int, basket_total_allowed: int) -> list[str]:
+    condition_lower = condition_name.lower()
+    monitoring = []
+    for key, items in MONITORING_BY_CONDITION.items():
+        if key in condition_lower:
+            monitoring = items
+            break
+    if basket_items_used == 0 and monitoring:
+        return [f"{m} (not yet recorded this cycle)" for m in monitoring[:3]]
+    return []
+
+
+@app.post("/ongoing-assessment", response_model=OngoingAssessmentResponse)
+async def ongoing_assessment(request: OngoingAssessmentRequest):
+    """
+    Authi Workflow B Intelligence — post-CIB approval evidence maintenance assistant.
+
+    Evaluates:
+    - Condition stability from clinical note language
+    - Basket utilisation and headroom
+    - Monitoring schedule compliance
+    - Formulary drift detection
+    - Escalation necessity
+    """
+    try:
+        stability = get_stability_signal(request.clinical_note)
+
+        basket_total = max(request.basket_total_allowed, 1)
+        basket_pct = round((request.basket_items_used / basket_total) * 100, 1)
+        basket_headroom = max(0, request.basket_total_allowed - request.basket_items_used)
+
+        if basket_pct >= 100:
+            basket_status = "exhausted"
+        elif basket_pct >= 75:
+            basket_status = "approaching_limit"
+        else:
+            basket_status = "within_limits"
+
+        monitoring_due = get_monitoring_due(request.condition_name, request.basket_items_used, request.basket_total_allowed)
+
+        formulary_drift_detected = False
+        formulary_drift_note = "No formulary drift indicators detected."
+        if request.current_medications:
+            note_lower = request.clinical_note.lower()
+            new_meds = [m for m in request.current_medications if m.lower() not in note_lower]
+            if new_meds:
+                formulary_drift_detected = True
+                formulary_drift_note = f"Medications {new_meds} do not appear in the clinical note. Verify these are still formulary-aligned for '{request.condition_name}' and that the CIB registration still covers them."
+
+        escalation_recommended = stability.signal in ("escalation_needed", "deteriorating")
+
+        recommendations: list[str] = []
+        if stability.signal == "escalation_needed":
+            recommendations.append("Condition signals suggest urgent review. Consider specialist referral or treatment escalation.")
+        if stability.signal == "deteriorating":
+            recommendations.append("Condition appears to be deteriorating. Adjust treatment plan and schedule a review within 2-4 weeks.")
+        if basket_status == "exhausted":
+            recommendations.append("Annual basket is fully utilised. File a clinical appeal with supporting evidence if further treatment is clinically necessary this year.")
+        elif basket_status == "approaching_limit":
+            recommendations.append(f"Basket is {basket_pct}% utilised with {basket_headroom} use(s) remaining. Prioritise essential monitoring for the remainder of this cycle.")
+        if monitoring_due:
+            recommendations.append(f"Monitoring items may be overdue: {', '.join(monitoring_due[:2])}. Ensure these are completed and documented this visit.")
+        if formulary_drift_detected:
+            recommendations.append("Formulary drift detected. Confirm that all active medications remain on the approved formulary for this condition under the patient's plan.")
+
+        return OngoingAssessmentResponse(
+            stability_signal=stability,
+            basket_utilisation_pct=basket_pct,
+            basket_headroom=basket_headroom,
+            basket_status=basket_status,
+            monitoring_due=monitoring_due,
+            formulary_drift_detected=formulary_drift_detected,
+            formulary_drift_note=formulary_drift_note,
+            escalation_recommended=escalation_recommended,
+            recommendations=recommendations,
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 if __name__ == "__main__":
     import uvicorn
     import os

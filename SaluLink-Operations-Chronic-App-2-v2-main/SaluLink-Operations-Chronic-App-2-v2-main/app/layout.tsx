@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import AuthiGradientDefs from "@/components/AuthiGradientDefs";
+import { AuthProvider } from "@/lib/AuthContext";
 
 export const metadata: Metadata = {
   title: "SaluLink Chronic Treatment App",
@@ -14,7 +16,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className="antialiased bg-white text-slate-900">
-        {children}
+        <AuthiGradientDefs />
+        <AuthProvider>{children}</AuthProvider>
       </body>
     </html>
   );

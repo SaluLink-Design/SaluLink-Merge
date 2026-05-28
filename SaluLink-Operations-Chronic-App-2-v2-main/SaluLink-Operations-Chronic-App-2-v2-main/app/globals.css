@@ -74,6 +74,27 @@
            bg-violet-100 text-violet-700 border border-violet-200;
   }
 
+  .badge-green {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+           bg-emerald-100 text-emerald-700 border;
+    border-color: #a7f3d0 !important;
+  }
+
+  .badge-orange {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+           bg-orange-100 text-orange-700 border border-orange-200;
+  }
+
+  .badge-yellow {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+           bg-yellow-100 text-yellow-700 border border-yellow-200;
+  }
+
+  .badge-slate {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+           bg-slate-100 text-slate-600 border border-slate-200;
+  }
+
   /* ── SaluLink brand gradient (sidebar + accents) ── */
   .brand-gradient {
     @apply bg-gradient-to-r from-blue-500 to-violet-600;
@@ -83,7 +104,12 @@
     @apply bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-transparent;
   }
 
-  /* SaluLink "Link" wordmark — cyan → blue → lavender (matches logo) */
+  /* SaluLink "Link" wordmark — solid baby blue (#38b6ff) */
+  .brand-link-text {
+    color: #38b6ff;
+  }
+
+  /* SaluLink "Link" — cyan → blue → lavender (Authi accents, not main logo) */
   .brand-link-gradient-text {
     background: linear-gradient(
       90deg,
@@ -151,6 +177,22 @@
     color: transparent;
   }
 
+  /* Doctor workspace — gradient pill, white label only */
+  .authi-badge-pill-minimal {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold;
+    background: linear-gradient(
+      90deg,
+      #38b6ff 0%,
+      #4f9fff 28%,
+      #6366f1 58%,
+      #c084fc 100%
+    );
+  }
+
+  .authi-badge-pill-minimal > span {
+    color: #ffffff;
+  }
+
   /* User avatar circle */
   .authi-avatar {
     @apply flex items-center justify-center shrink-0 rounded-full shadow-sm;
@@ -188,6 +230,33 @@
       rgba(192, 132, 252, 0.06) 100%
     );
     box-shadow: 0 4px 14px rgba(99, 102, 241, 0.12);
+  }
+
+  /* Doctor workspace — New Case Action cards */
+  .authi-action-card-gradient-border {
+    @apply flex flex-col gap-2 rounded-2xl p-4 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2;
+    border: 1.5px solid transparent;
+    background-image:
+      linear-gradient(#ffffff, #ffffff),
+      linear-gradient(90deg, #38b6ff 0%, #4f9fff 28%, #6366f1 58%, #c084fc 100%);
+    background-origin: border-box;
+    background-clip: padding-box, border-box;
+    --tw-ring-color: rgba(99, 102, 241, 0.25);
+  }
+
+  .authi-action-card-gradient-border:hover {
+    background-image:
+      linear-gradient(#f8fafc, #f8fafc),
+      linear-gradient(90deg, #38b6ff 0%, #4f9fff 28%, #6366f1 58%, #c084fc 100%);
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.12);
+  }
+
+  .authi-icon-gradient {
+    @apply inline-flex shrink-0;
+  }
+
+  .authi-icon-gradient svg {
+    stroke: url(#authi-stroke-gradient);
   }
 
   /* Text link (View Claim) */
@@ -465,6 +534,20 @@
   .input-field:focus {
     @apply ring-2 ring-violet-500/40 border-violet-400;
   }
+}
+
+@keyframes authi-orb-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.authi-orb-bounce {
+  animation: authi-orb-bounce 2.4s ease-in-out infinite;
 }
 
 @keyframes slideArrow {

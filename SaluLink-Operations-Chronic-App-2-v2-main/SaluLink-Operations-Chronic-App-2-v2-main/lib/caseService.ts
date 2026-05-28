@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
-import { PatientCase, TreatmentItem, SelectedMedication } from '@/types';
+import { PatientCase, TreatmentItem, SelectedMedication, DeliveryStatus } from '@/types';
+import { normalizeSelectedMedication } from './medicationCoverage';
 
 export interface SaveCaseParams {
   patientName: string;
@@ -17,6 +18,10 @@ export interface SaveCaseParams {
   medicationNote: string;
   plan: string;
   isFinalSave?: boolean;
+  workspaceId?: string;
+  createdBy?: string;
+  deliveryStatus?: DeliveryStatus;
+  doctorApproved?: boolean;
 }
 
 export async function saveCaseToDatabase(params: SaveCaseParams) {
@@ -37,6 +42,10 @@ export async function saveCaseToDatabase(params: SaveCaseParams) {
       medicationNote,
       plan,
       isFinalSave,
+      workspaceId,
+      createdBy,
+      deliveryStatus,
+      doctorApproved,
     } = params;
 
     const status = isFinalSave
@@ -47,22 +56,29 @@ export async function saveCaseToDatabase(params: SaveCaseParams) {
       ? 'diagnostic'
       : 'draft';
 
+    const insertPayload: Record<string, unknown> = {
+      patient_name: patientName,
+      patient_id: patientId,
+      patient_email: patientEmail,
+      patient_phone: patientPhone,
+      medical_aid_number: medicalAidNumber,
+      clinical_note: clinicalNote,
+      condition_name: conditionName,
+      icd_code: icdCode,
+      icd_description: icdDescription,
+      medication_note: medicationNote,
+      plan: plan,
+      status: status,
+    };
+
+    if (workspaceId) insertPayload.workspace_id = workspaceId;
+    if (createdBy) insertPayload.created_by = createdBy;
+    if (deliveryStatus) insertPayload.delivery_status = deliveryStatus;
+    if (doctorApproved !== undefined) insertPayload.doctor_approved = doctorApproved;
+
     const { data: caseData, error: caseError } = await supabase
       .from('cases')
-      .insert({
-        patient_name: patientName,
-        patient_id: patientId,
-        patient_email: patientEmail,
-        patient_phone: patientPhone,
-        medical_aid_number: medicalAidNumber,
-        clinical_note: clinicalNote,
-        condition_name: conditionName,
-        icd_code: icdCode,
-        icd_description: icdDescription,
-        medication_note: medicationNote,
-        plan: plan,
-        status: status,
-      })
+      .insert(insertPayload)
       .select()
       .maybeSingle();
 
@@ -115,19 +131,42 @@ export async function saveCaseToDatabase(params: SaveCaseParams) {
     }
 
     if (medications.length > 0) {
-      const medicationRecords = medications.map((medication) => ({
+      const normalizedMeds = medications.map((medication) => normalizeSelectedMedication(medication));
+      const medicationRecords = normalizedMeds.map((medication) => ({
         case_id: caseId,
         medicine_class: medication.medicineClass,
         active_ingredient: medication.activeIngredient,
         medicine_name_and_strength: medication.medicineNameAndStrength,
         cda_amount: medication.cdaAmount,
+        formulary_status: medication.formularyStatus,
+        cda_cap_amount: medication.cdaCapAmount ?? null,
+        coverage_decision: medication.coverageDecision,
+        copay_risk: medication.copayRisk,
+        coverage_note: medication.coverageNote,
+        unlisted_clinical_rationale: medication.unlistedClinicalRationale || '',
         note: medication.note || '',
         documentation_notes: medication.documentation?.notes || '',
       }));
 
-      const { error: medicationError } = await supabase
+      let { error: medicationError } = await supabase
         .from('case_medications')
         .insert(medicationRecords);
+
+      // Backward compatibility for databases without the new medication coverage columns.
+      if (medicationError?.message?.toLowerCase().includes('column')) {
+        const fallbackRecords = normalizedMeds.map((medication) => ({
+          case_id: caseId,
+          medicine_class: medication.medicineClass,
+          active_ingredient: medication.activeIngredient,
+          medicine_name_and_strength: medication.medicineNameAndStrength,
+          cda_amount: medication.cdaAmount,
+          note: medication.note || '',
+          documentation_notes: medication.documentation?.notes || '',
+        }));
+
+        const fallback = await supabase.from('case_medications').insert(fallbackRecords);
+        medicationError = fallback.error;
+      }
 
       if (medicationError) {
         throw new Error(`Failed to save medications: ${medicationError.message}`);
@@ -179,12 +218,33 @@ export async function getCaseById(caseId: string) {
       .select('*')
       .eq('case_id', caseId);
 
+    const normalizedMedications: SelectedMedication[] =
+      (medicationData || []).map((medication: any) =>
+        normalizeSelectedMedication({
+          medicineClass: medication.medicine_class || '',
+          activeIngredient: medication.active_ingredient || '',
+          medicineNameAndStrength: medication.medicine_name_and_strength || '',
+          cdaAmount: medication.cda_amount || '',
+          formularyStatus: medication.formulary_status ?? 'listed',
+          cdaCapAmount: medication.cda_cap_amount ?? undefined,
+          coverageDecision: medication.coverage_decision ?? undefined,
+          copayRisk: medication.copay_risk ?? undefined,
+          coverageNote: medication.coverage_note ?? undefined,
+          unlistedClinicalRationale: medication.unlisted_clinical_rationale || undefined,
+          note: medication.note || '',
+          documentation: {
+            notes: medication.documentation_notes || '',
+            images: [],
+          },
+        })
+      );
+
     return {
       success: true,
       case: caseData,
       diagnosticTreatments: diagnosticData || [],
       ongoingTreatments: ongoingData || [],
-      medications: medicationData || [],
+      medications: normalizedMedications,
     };
   } catch (error) {
     console.error('Error fetching case:', error);
@@ -195,12 +255,33 @@ export async function getCaseById(caseId: string) {
   }
 }
 
-export async function getAllCases() {
+export async function updateCaseDeliveryStatus(
+  caseId: string,
+  deliveryStatus: DeliveryStatus,
+  doctorApproved?: boolean
+) {
+  const updates: Record<string, unknown> = {
+    delivery_status: deliveryStatus,
+    updated_at: new Date().toISOString(),
+  };
+  if (doctorApproved !== undefined) {
+    updates.doctor_approved = doctorApproved;
+  }
+
+  const { error } = await supabase.from('cases').update(updates).eq('id', caseId);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function getAllCases(workspaceId?: string) {
   try {
-    const { data, error } = await supabase
-      .from('cases')
-      .select('*')
-      .order('created_at', { ascending: false });
+    let query = supabase.from('cases').select('*').order('created_at', { ascending: false });
+    if (workspaceId) {
+      query = query.eq('workspace_id', workspaceId);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       throw new Error(`Failed to fetch cases: ${error.message}`);
