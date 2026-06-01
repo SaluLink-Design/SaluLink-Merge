@@ -685,7 +685,7 @@ def find_direct_condition_matches(clinical_text):
             'type 2 diabetes', 'type ii diabetes', 't2dm', 'type2 diabetes',
             'non-insulin-dependent diabetes', 'non insulin dependent diabetes', 'niddm',
             'adult-onset diabetes', 'metabolic diabetes', 'insulin resistance',
-            'non-insulin dependent diabetes'
+            'non-insulin dependent diabetes', 'diabetes mellitus', 'dm2', 'diabetic',
         ],
         'hypertension': [
             'high blood pressure', 'elevated blood pressure', 'hypertensive', 'htn',

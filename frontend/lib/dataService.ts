@@ -1,5 +1,6 @@
 import Papa from 'papaparse'; // TODO: Ensure 'papaparse' is installed with `npm install papaparse` and typing with `npm install --save-dev @types/papaparse`
 import type { ChronicCondition, MedicineItem, TreatmentBasketItem, MedicalPlan, MedicalScheme } from '@/types';
+import { normalizeConditionName } from '@/lib/conditionNames';
 
 // Parse CSV data from public folder
 export class DataService {
@@ -192,28 +193,28 @@ export class DataService {
     return this.chronicConditions;
   }
 
+  private static conditionKey(condition: string): string {
+    return normalizeConditionName(condition).toLowerCase();
+  }
+
   static getConditionsByName(name: string): ChronicCondition[] {
-    return this.chronicConditions.filter(c => 
-      c.condition.toLowerCase().includes(name.toLowerCase())
-    );
+    const key = this.conditionKey(name);
+    return this.chronicConditions.filter((c) => c.condition.toLowerCase().includes(key));
   }
 
   static getIcdCodesForCondition(condition: string): ChronicCondition[] {
-    return this.chronicConditions.filter(c => 
-      c.condition.toLowerCase() === condition.toLowerCase()
-    );
+    const key = this.conditionKey(condition);
+    return this.chronicConditions.filter(c => c.condition.toLowerCase() === key);
   }
 
   static getMedicinesForCondition(condition: string): MedicineItem[] {
-    return this.medicines.filter(m => 
-      m.condition.toLowerCase() === condition.toLowerCase()
-    );
+    const key = this.conditionKey(condition);
+    return this.medicines.filter(m => m.condition.toLowerCase() === key);
   }
 
   static getDiagnosticBasketForCondition(condition: string): TreatmentBasketItem[] {
-    const items = this.treatmentBasket.filter(t =>
-      t.condition.toLowerCase() === condition.toLowerCase()
-    );
+    const key = this.conditionKey(condition);
+    const items = this.treatmentBasket.filter(t => t.condition.toLowerCase() === key);
 
     const uniqueItems = new Map<string, TreatmentBasketItem>();
 
@@ -234,9 +235,8 @@ export class DataService {
   }
 
   static getOngoingBasketForCondition(condition: string): TreatmentBasketItem[] {
-    const items = this.treatmentBasket.filter(t =>
-      t.condition.toLowerCase() === condition.toLowerCase()
-    );
+    const key = this.conditionKey(condition);
+    const items = this.treatmentBasket.filter(t => t.condition.toLowerCase() === key);
 
     const uniqueItems = new Map<string, TreatmentBasketItem>();
 
@@ -265,9 +265,8 @@ export class DataService {
   }
 
   static getTreatmentBasketForCondition(condition: string): TreatmentBasketItem[] {
-    const items = this.treatmentBasket.filter(t =>
-      t.condition.toLowerCase() === condition.toLowerCase()
-    );
+    const key = this.conditionKey(condition);
+    const items = this.treatmentBasket.filter(t => t.condition.toLowerCase() === key);
 
     const uniqueItems = new Map<string, TreatmentBasketItem>();
 
