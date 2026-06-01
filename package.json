@@ -1,0 +1,19 @@
+{
+  "name": "salulink-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "sync:data": "node scripts/sync-data.mjs",
+    "dev:web": "npm run sync:data && npm run dev --prefix frontend",
+    "dev:api": "npm run sync:data && cd backend && ./venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000",
+    "dev": "npm run sync:data && npx concurrently -n api,web -c blue,green \"npm run dev:api\" \"npm run dev --prefix frontend\"",
+    "build:web": "npm run sync:data && npm run build --prefix frontend",
+    "lint:web": "npm run lint --prefix frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
