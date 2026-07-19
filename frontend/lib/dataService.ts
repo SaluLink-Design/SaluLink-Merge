@@ -15,10 +15,10 @@ export class DataService {
   }
 
   static setActiveScheme(scheme: MedicalScheme) {
-    this.activeScheme = scheme;
-    if (scheme !== 'discovery') {
+    if (this.activeScheme !== scheme) {
       this.initialized = false;
     }
+    this.activeScheme = scheme;
   }
 
   /**
@@ -107,7 +107,7 @@ export class DataService {
       this.treatmentBasket = [];
       return;
     }
-    if (this.initialized) return;
+    if (this.initialized && this.treatmentBasket.length > 0) return;
 
     try {
       // Add cache busting timestamp to force fresh CSV loads
@@ -191,6 +191,25 @@ export class DataService {
 
   static getChronicConditions(): ChronicCondition[] {
     return this.chronicConditions;
+  }
+
+  /** One entry per catalogue condition name (scheme chronic disease list). */
+  static getUniqueChronicConditionNames(): string[] {
+    const seen = new Set<string>();
+    const names: string[] = [];
+    for (const entry of this.chronicConditions) {
+      const key = this.conditionKey(entry.condition);
+      if (!seen.has(key)) {
+        seen.add(key);
+        names.push(entry.condition);
+      }
+    }
+    return names.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+  }
+
+  /** Default ICD row when doctor picks a condition from the catalogue. */
+  static getPrimaryChronicCondition(condition: string): ChronicCondition | undefined {
+    return this.getIcdCodesForCondition(condition)[0];
   }
 
   private static conditionKey(condition: string): string {

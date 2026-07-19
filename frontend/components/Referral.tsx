@@ -1,19 +1,58 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { UserPlus, AlertCircle, FileText, Upload } from 'lucide-react';
-import { PatientCase } from '@/types';
+import { PatientCase, ProgressReview } from '@/types';
+import { formatProgressReviewSummary } from '@/lib/followUpContext';
+
+export interface ReferralFormData {
+  urgency: 'routine' | 'urgent' | 'emergency';
+  referralNote: string;
+  specialistType: string;
+}
 
 interface ReferralProps {
   patientCase: PatientCase;
+  embedMode?: boolean;
+  /** Original diagnostic note from patient's registration visit */
+  diagnosticClinicalNote?: string;
+  /** This visit's structured progress review */
+  progressReview?: ProgressReview;
+  initialReferralNote?: string;
+  initialSpecialistType?: string;
+  onDataChange?: (data: ReferralFormData) => void;
   onSavePdfOnly: (urgency: 'routine' | 'urgent' | 'emergency', referralNote: string, specialistType: string) => void;
   onSaveWithAttachments: (urgency: 'routine' | 'urgent' | 'emergency', referralNote: string, specialistType: string) => void;
 }
 
-const Referral = ({ patientCase, onSavePdfOnly, onSaveWithAttachments }: ReferralProps) => {
+const Referral = ({
+  patientCase,
+  embedMode = false,
+  diagnosticClinicalNote = '',
+  progressReview,
+  initialReferralNote = '',
+  initialSpecialistType = '',
+  onDataChange,
+  onSavePdfOnly,
+  onSaveWithAttachments,
+}: ReferralProps) => {
   const [urgency, setUrgency] = useState<'routine' | 'urgent' | 'emergency'>('routine');
-  const [referralNote, setReferralNote] = useState('');
-  const [specialistType, setSpecialistType] = useState('');
+  const [referralNote, setReferralNote] = useState(initialReferralNote);
+  const [specialistType, setSpecialistType] = useState(initialSpecialistType);
+
+  useEffect(() => {
+    setReferralNote(initialReferralNote);
+  }, [initialReferralNote]);
+
+  useEffect(() => {
+    if (initialSpecialistType) setSpecialistType(initialSpecialistType);
+  }, [initialSpecialistType]);
+
+  useEffect(() => {
+    if (embedMode && onDataChange) {
+      onDataChange({ urgency, referralNote, specialistType });
+    }
+  }, [urgency, referralNote, specialistType, embedMode, onDataChange]);
 
   const urgencyOptions = [
     { value: 'routine', label: 'Routine', color: 'bg-green-100 text-green-700 border-green-300' },
@@ -21,8 +60,11 @@ const Referral = ({ patientCase, onSavePdfOnly, onSaveWithAttachments }: Referra
     { value: 'emergency', label: 'Emergency', color: 'bg-red-100 text-red-700 border-red-300' },
   ];
   
+  const progressSummary = progressReview ? formatProgressReviewSummary(progressReview) : '';
+
   return (
-    <div className="card">
+    <div className={embedMode ? '' : 'card'}>
+      {!embedMode && (
       <div className="flex items-center gap-3 mb-6">
         <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
           <UserPlus className="w-6 h-6 text-blue-600" />
@@ -32,10 +74,14 @@ const Referral = ({ patientCase, onSavePdfOnly, onSaveWithAttachments }: Referra
           <p className="text-sm text-gray-500">Refer patient to specialist</p>
         </div>
       </div>
+      )}
+
+      {embedMode && (
+        <h3 className="text-lg font-semibold text-slate-900 mb-4">Specialist Referral</h3>
+      )}
       
-      {/* Complete Case Summary */}
       <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg space-y-4">
-        <h3 className="font-semibold text-lg">Complete Patient Case Summary</h3>
+        <h3 className="font-semibold text-lg">Clinical context for referral</h3>
 
         {/* Patient Info */}
         <div className="grid grid-cols-2 gap-4 text-sm">
@@ -58,16 +104,44 @@ const Referral = ({ patientCase, onSavePdfOnly, onSaveWithAttachments }: Referra
           </p>
         </div>
 
-        {/* Clinical Note */}
-        <div className="text-sm">
-          <p className="text-gray-600 mb-1">Clinical Note:</p>
-          <div className="p-3 bg-white border border-gray-200 rounded">
-            <p className="text-gray-900 whitespace-pre-wrap">{patientCase.clinicalNote}</p>
+        {diagnosticClinicalNote && (
+          <div className="text-sm">
+            <p className="text-gray-600 mb-1 font-medium">Original diagnostic note</p>
+            <div className="p-3 bg-white border border-gray-200 rounded">
+              <p className="text-gray-900 whitespace-pre-wrap text-xs">{diagnosticClinicalNote}</p>
+            </div>
           </div>
-        </div>
+        )}
+
+        {patientCase.clinicalNote?.trim() && (
+          <div className="text-sm">
+            <p className="text-gray-600 mb-1 font-medium">This follow-up visit note</p>
+            <div className="p-3 bg-white border border-gray-200 rounded">
+              <p className="text-gray-900 whitespace-pre-wrap text-xs">{patientCase.clinicalNote}</p>
+            </div>
+          </div>
+        )}
+
+        {progressSummary && (
+          <div className="text-sm">
+            <p className="text-gray-600 mb-1 font-medium">Progress review (this visit)</p>
+            <div className="p-3 bg-white border border-gray-200 rounded">
+              <p className="text-gray-900 whitespace-pre-wrap text-xs">{progressSummary}</p>
+            </div>
+          </div>
+        )}
+
+        {!diagnosticClinicalNote && !patientCase.clinicalNote?.trim() && !progressSummary && (
+          <div className="text-sm">
+            <p className="text-gray-600 mb-1">Clinical Note:</p>
+            <div className="p-3 bg-white border border-gray-200 rounded">
+              <p className="text-gray-500 text-xs">No clinical notes recorded.</p>
+            </div>
+          </div>
+        )}
 
         {/* Diagnostic Tests */}
-        {patientCase.diagnosticTreatments.length > 0 && (
+        {patientCase.diagnosticTreatments?.length > 0 && (
           <div className="text-sm">
             <p className="text-gray-600 mb-2">Diagnostic Tests Completed:</p>
             <div className="space-y-1">
@@ -85,9 +159,9 @@ const Referral = ({ patientCase, onSavePdfOnly, onSaveWithAttachments }: Referra
         )}
 
         {/* Ongoing Management */}
-        {patientCase.ongoingTreatments.length > 0 && (
+        {patientCase.ongoingTreatments?.length > 0 && (
           <div className="text-sm">
-            <p className="text-gray-600 mb-2">Ongoing Management:</p>
+            <p className="text-gray-600 mb-2 font-medium">Monitoring &amp; test results (this visit):</p>
             <div className="space-y-1">
               {patientCase.ongoingTreatments.map((treatment, i) => (
                 <div key={i} className="p-2 bg-white border border-gray-200 rounded text-xs">
@@ -103,15 +177,14 @@ const Referral = ({ patientCase, onSavePdfOnly, onSaveWithAttachments }: Referra
         )}
 
         {/* Current Medications */}
-        {patientCase.medications.length > 0 && (
+        {(patientCase.medications?.length ?? 0) > 0 && (
           <div className="text-sm">
             <p className="text-gray-600 mb-2">Current Medications:</p>
             <div className="space-y-1">
-              {patientCase.medications.map((med, i) => (
+              {patientCase.medications!.map((med, i) => (
                 <div key={i} className="p-2 bg-white border border-gray-200 rounded text-xs">
                   <p className="font-medium">{med.medicineNameAndStrength}</p>
                   <p className="text-gray-500">{med.activeIngredient}</p>
-                  <p className="text-blue-600 font-medium">CDA: {med.cdaAmount}</p>
                 </div>
               ))}
             </div>
@@ -212,6 +285,7 @@ const Referral = ({ patientCase, onSavePdfOnly, onSaveWithAttachments }: Referra
       )}
       
       {/* Save Buttons */}
+      {!embedMode && (
       <div className="flex gap-3 justify-end">
         <button
           onClick={() => onSavePdfOnly(urgency, referralNote, specialistType)}
@@ -230,6 +304,7 @@ const Referral = ({ patientCase, onSavePdfOnly, onSaveWithAttachments }: Referra
           Export with Attachments (ZIP)
         </button>
       </div>
+      )}
     </div>
   );
 };

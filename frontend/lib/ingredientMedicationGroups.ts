@@ -43,7 +43,7 @@ export const buildIngredientMedicationGroups = (
       const listedCount = brands.filter(
         (brand) => buildCoverageDecision(brand, selectedPlan).formularyStatus === 'listed'
       ).length;
-      const coverageSummary =
+      const coverageSummary: IngredientMedicationGroup['coverageSummary'] =
         listedCount === brands.length
           ? 'all_listed'
           : listedCount === 0
@@ -62,7 +62,7 @@ export const buildIngredientMedicationGroups = (
         }
         return true;
       }).length;
-      const availabilitySummary =
+      const availabilitySummary: IngredientMedicationGroup['availabilitySummary'] =
         availableCount === brands.length
           ? 'all_available'
           : availableCount === 0

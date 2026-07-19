@@ -11,6 +11,7 @@ import {
 } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
+import { clearPersistedCaseStore } from '@/lib/store';
 import {
   acceptWorkspaceInvite,
   completeDoctorOnboarding,
@@ -19,10 +20,12 @@ import {
   fetchUserWorkspace,
   fetchWorkspaceInvites,
   fetchWorkspaceMembers,
+  deleteMyAccount,
   signIn,
   signOut,
   signUpAssistant,
   signUpDoctor,
+  updateDirectoryListing,
 } from '@/lib/workspaceService';
 import type {
   DoctorOnboardingInput,
@@ -40,7 +43,9 @@ interface AuthContextValue extends WorkspaceContextValue {
   signUpDoctorAccount: (email: string, password: string) => Promise<{ error: string | null }>;
   signInAccount: (email: string, password: string) => Promise<{ error: string | null }>;
   signOutAccount: () => Promise<void>;
+  deleteAccount: () => Promise<{ error: string | null }>;
   completeOnboarding: (input: DoctorOnboardingInput) => Promise<{ error: string | null }>;
+  setDirectoryListing: (listed: boolean) => Promise<{ error: string | null }>;
   signUpAssistantAccount: (
     email: string,
     password: string,
@@ -139,11 +144,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOutAccount = useCallback(async () => {
     await signOut();
+    clearPersistedCaseStore();
     setProfile(null);
     setWorkspace(null);
     setMembership(null);
     setMembers([]);
     setInvites([]);
+  }, []);
+
+  const deleteAccount = useCallback(async () => {
+    const { error } = await deleteMyAccount();
+    if (error) {
+      return { error: error.message };
+    }
+
+    // Ensure local auth/session state is flushed even when auth row vanishes
+    // server-side as part of delete_my_account().
+    await signOut();
+    clearPersistedCaseStore();
+    setProfile(null);
+    setWorkspace(null);
+    setMembership(null);
+    setMembers([]);
+    setInvites([]);
+    return { error: null };
   }, []);
 
   const completeOnboarding = useCallback(
@@ -170,6 +194,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     },
     [refreshWorkspace, user]
+  );
+
+  const setDirectoryListing = useCallback(
+    async (listed: boolean) => {
+      if (!user) return { error: 'You must be signed in to change directory settings.' };
+      try {
+        const nextProfile = await updateDirectoryListing(user.id, listed);
+        setProfile(nextProfile);
+        return { error: null };
+      } catch (err) {
+        return {
+          error: err instanceof Error ? err.message : 'Could not save directory settings.',
+        };
+      }
+    },
+    [user]
   );
 
   const loadPendingInvite = useCallback(async (token: string) => {
@@ -227,7 +267,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUpDoctorAccount,
       signInAccount,
       signOutAccount,
+      deleteAccount,
       completeOnboarding,
+      setDirectoryListing,
       signUpAssistantAccount,
       acceptInvite,
       pendingInvite,
@@ -247,7 +289,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signUpDoctorAccount,
       signInAccount,
       signOutAccount,
+      deleteAccount,
       completeOnboarding,
+      setDirectoryListing,
       signUpAssistantAccount,
       acceptInvite,
       pendingInvite,

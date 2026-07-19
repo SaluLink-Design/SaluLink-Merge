@@ -2,6 +2,8 @@ export type WorkspaceRole = 'owner' | 'assistant';
 
 export type DeliveryStatus = 'draft' | 'ready_to_send' | 'sent_to_patient';
 
+import type { PractitionerRole } from '@/types';
+
 export interface Profile {
   id: string;
   email: string;
@@ -9,7 +11,10 @@ export interface Profile {
   surname: string;
   bhfNumber: string;
   speciality: string;
+  practitionerRole: PractitionerRole;
   phone: string;
+  /** Opt-in: visible to other workspaces via search_specialist_directory(). */
+  directoryListed: boolean;
 }
 
 export interface Workspace {
@@ -42,8 +47,10 @@ export interface DoctorOnboardingInput {
   surname: string;
   bhfNumber: string;
   speciality: string;
+  practitionerRole: PractitionerRole;
   phone: string;
   practiceName: string;
+  directoryListed: boolean;
 }
 
 export interface WorkspaceContextValue {

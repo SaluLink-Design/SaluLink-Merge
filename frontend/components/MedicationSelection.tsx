@@ -6,6 +6,11 @@ import { MedicineItem, SelectedMedication, MedicalPlan, BenefitState } from '@/t
 import { DataService } from '@/lib/dataService';
 import { buildCoverageDecision, parseCdaAmount } from '@/lib/medicationCoverage';
 import { buildIngredientMedicationGroups, getCdaForPlan } from '@/lib/ingredientMedicationGroups';
+import {
+  formatMedicineLabel,
+  parseMedicineLabel,
+  resolveSelectedStrength,
+} from '@/lib/medicineStrength';
 import { fundingSourceLabel, isWorkflowA } from '@/lib/benefitState';
 import FundingSourceBadge from '@/components/FundingSourceBadge';
 
@@ -18,6 +23,23 @@ interface MedicationSelectionProps {
   onRemoveMedication: (index: number) => void;
   onSetPlan?: (plan: MedicalPlan) => void;
   excludedMedications?: SelectedMedication[];
+  showSection12Fields?: boolean;
+  /** Referral-only: capture directions for the patient (stored on `note`). */
+  showPatientInstructions?: boolean;
+  onUpdateSection12?: (
+    index: number,
+    fields: Partial<
+      Pick<
+        SelectedMedication,
+        | 'dosage'
+        | 'durationUsed'
+        | 'dateFirstDiagnosed'
+        | 'selectedStrength'
+        | 'medicineNameAndStrength'
+        | 'note'
+      >
+    >
+  ) => void;
 }
 
 const MedicationSelection = ({
@@ -27,7 +49,10 @@ const MedicationSelection = ({
   medications,
   onAddMedication,
   onRemoveMedication,
-  excludedMedications = []
+  excludedMedications = [],
+  showSection12Fields = false,
+  showPatientInstructions = false,
+  onUpdateSection12,
 }: MedicationSelectionProps) => {
   const resolvedBenefitState = benefitState ?? 'unregistered';
   const [availableMedications, setAvailableMedications] = useState<MedicineItem[]>([]);
@@ -92,13 +117,39 @@ const MedicationSelection = ({
     });
   }, [ingredientGroups, searchTerm]);
 
-  const handleSelectMedication = (medicine: MedicineItem) => {
-    const isAlreadySelected = medications.some(
-      m => m.medicineNameAndStrength === medicine.medicineNameAndStrength
-    );
+  const findMedicationIndex = (medicine: MedicineItem): number => {
+    const parsed = parseMedicineLabel(medicine.medicineNameAndStrength);
+    const byCatalogue = medications.findIndex((med) => med.catalogueLabel === parsed.catalogueLabel);
+    if (byCatalogue >= 0) return byCatalogue;
+    return medications.findIndex((med) => med.medicineNameAndStrength === medicine.medicineNameAndStrength);
+  };
 
+  const isMedicationSelected = (medicine: MedicineItem, strength?: string) => {
+    const index = findMedicationIndex(medicine);
+    if (index < 0) return false;
+    if (!strength) return true;
+    return medications[index].selectedStrength === strength;
+  };
+
+  const getSelectedStrengthForCatalogue = (catalogueLabel: string): string | undefined =>
+    medications.find((med) => med.catalogueLabel === catalogueLabel)?.selectedStrength;
+
+  const removeMedicationForBrand = (medicine: MedicineItem) => {
+    const index = findMedicationIndex(medicine);
+    if (index >= 0) onRemoveMedication(index);
+  };
+
+  const addMedicationWithStrength = (medicine: MedicineItem, strength: string) => {
+    const parsed = parseMedicineLabel(medicine.medicineNameAndStrength);
+    const resolvedStrength = strength || resolveSelectedStrength(parsed);
+    const brandName = parsed.brandName;
+    const displayLabel = resolvedStrength
+      ? formatMedicineLabel(brandName, resolvedStrength)
+      : brandName || medicine.medicineNameAndStrength;
+
+    const isAlreadySelected = isMedicationSelected(medicine, resolvedStrength);
     const isExcluded = excludedMedications.some(
-      m => m.medicineNameAndStrength === medicine.medicineNameAndStrength
+      (m) => m.medicineNameAndStrength === displayLabel || m.catalogueLabel === parsed.catalogueLabel
     );
 
     if (isAlreadySelected || isExcluded) return;
@@ -107,13 +158,13 @@ const MedicationSelection = ({
     if (!isAllowed && medicine.planRestriction) {
       const { type, plans, originalText } = medicine.planRestriction;
       let message = '';
-      
+
       if (type === 'only') {
         message = `⚠️ Plan Coverage Alert\n\nThis medication is not covered by the ${selectedPlan} plan.\n\n${originalText}\n\nThis medication is only available on: ${plans.join(', ')} plans.\n\nPlease either:\n• Select a different medication, OR\n• Change the patient's plan to one of the allowed plans`;
       } else if (type === 'not_available') {
         message = `⚠️ Plan Coverage Alert\n\nThis medication is not available on the ${selectedPlan} plan.\n\n${originalText}\n\nPlease either:\n• Select a different medication, OR\n• Change the patient's plan to access this medication`;
       }
-      
+
       alert(message);
       return;
     }
@@ -134,7 +185,10 @@ const MedicationSelection = ({
     const newMedication: SelectedMedication = {
       medicineClass: medicine.medicineClass,
       activeIngredient: medicine.activeIngredient,
-      medicineNameAndStrength: medicine.medicineNameAndStrength,
+      medicineNameAndStrength: displayLabel,
+      brandName,
+      selectedStrength: resolvedStrength || undefined,
+      catalogueLabel: parsed.catalogueLabel,
       cdaAmount: getCdaForPlan(medicine, selectedPlan),
       ...coverage,
       unlistedClinicalRationale,
@@ -153,6 +207,61 @@ const MedicationSelection = ({
     }
 
     onAddMedication(newMedication);
+  };
+
+  const getStrengthOptionsForMedication = (med: SelectedMedication): string[] => {
+    if (med.catalogueLabel) {
+      return parseMedicineLabel(med.catalogueLabel).strengths;
+    }
+    const match = availableMedications.find(
+      (item) =>
+        item.medicineNameAndStrength === med.medicineNameAndStrength ||
+        parseMedicineLabel(item.medicineNameAndStrength).brandName === med.brandName
+    );
+    return match ? parseMedicineLabel(match.medicineNameAndStrength).strengths : [];
+  };
+
+  const handleSelectedStrengthChange = (
+    index: number,
+    med: SelectedMedication,
+    strength: string
+  ) => {
+    if (!strength || !onUpdateSection12) return;
+    const brandName =
+      med.brandName ||
+      parseMedicineLabel(med.catalogueLabel || med.medicineNameAndStrength).brandName;
+    onUpdateSection12(index, {
+      selectedStrength: strength,
+      medicineNameAndStrength: formatMedicineLabel(brandName, strength),
+    });
+  };
+
+  const handleBrandCardClick = (medicine: MedicineItem) => {
+    const parsed = parseMedicineLabel(medicine.medicineNameAndStrength);
+    const isSelected = isMedicationSelected(medicine);
+    const isExcluded = excludedMedications.some(
+      (m) =>
+        m.catalogueLabel === parsed.catalogueLabel ||
+        m.medicineNameAndStrength === medicine.medicineNameAndStrength
+    );
+    const isAllowedForPlan = DataService.isMedicationAllowedForPlan(medicine, selectedPlan);
+    const isRestricted = !isAllowedForPlan;
+    const isInsulin = isDiabetesCondition && insulinClasses.includes(medicine.medicineClass);
+    if (isInsulin && !isSelected) {
+      const medicationCost = parseCdaAmount(getCdaForPlan(medicine, selectedPlan)) ?? 0;
+      if (calculateInsulinTotal() + medicationCost > getInsulinLimit()) {
+        return;
+      }
+    }
+
+    if (isExcluded || isRestricted) return;
+
+    if (isSelected) {
+      removeMedicationForBrand(medicine);
+      return;
+    }
+
+    addMedicationWithStrength(medicine, resolveSelectedStrength(parsed));
   };
 
   const selectedIngredientGroup = useMemo(
@@ -297,9 +406,6 @@ const MedicationSelection = ({
                             {coverageLabel}
                           </span>
                         </div>
-                        <p className="text-violet-600 font-semibold text-sm">
-                          CDA Amount: {group.cdaAmount || 'Not specified'}
-                        </p>
                         <p className="text-xs text-slate-500 mt-1">
                           {group.brands.length} brand option{group.brands.length !== 1 ? 's' : ''}
                         </p>
@@ -321,7 +427,9 @@ const MedicationSelection = ({
               <div>
                 <button
                   type="button"
-                  onClick={() => setSelectedIngredientKey(null)}
+                  onClick={() => {
+                    setSelectedIngredientKey(null);
+                  }}
                   className="btn-secondary inline-flex items-center gap-1 px-3 py-1.5 text-sm"
                 >
                   <ArrowLeft className="w-4 h-4" />
@@ -330,9 +438,6 @@ const MedicationSelection = ({
                 <h3 className="mt-2 text-xl font-semibold text-slate-900">
                   {selectedIngredientGroup.ingredient}
                 </h3>
-                <p className="text-sm text-violet-600 font-semibold">
-                  CDA Amount: {selectedIngredientGroup.cdaAmount || 'Not specified'}
-                </p>
               </div>
               <span className="text-xs text-slate-500 mt-1">
                 {selectedIngredientGroup.brands.length} brand option
@@ -342,11 +447,14 @@ const MedicationSelection = ({
 
             <div className="space-y-2 max-h-[520px] overflow-y-auto">
               {selectedIngredientGroup.brands.map((medicine, index) => {
-                const isSelected = medications.some(
-                  (m) => m.medicineNameAndStrength === medicine.medicineNameAndStrength
-                );
+                const parsed = parseMedicineLabel(medicine.medicineNameAndStrength);
+                const selectedStrength = getSelectedStrengthForCatalogue(parsed.catalogueLabel);
+                const isSelected = isMedicationSelected(medicine);
+                const hasMultipleStrengths = parsed.strengths.length > 1;
                 const isExcluded = excludedMedications.some(
-                  (m) => m.medicineNameAndStrength === medicine.medicineNameAndStrength
+                  (m) =>
+                    m.catalogueLabel === parsed.catalogueLabel ||
+                    m.medicineNameAndStrength === medicine.medicineNameAndStrength
                 );
                 const cdaAmount = getCdaForPlan(medicine, selectedPlan);
                 const coverage = buildCoverageDecision(medicine, selectedPlan, resolvedBenefitState);
@@ -355,95 +463,109 @@ const MedicationSelection = ({
                 const medicationCost = parseCdaAmount(cdaAmount) ?? 0;
                 const currentInsulinTotal = calculateInsulinTotal();
                 const wouldExceedLimit =
-                  isInsulin && currentInsulinTotal + medicationCost > getInsulinLimit();
+                  isInsulin && !isSelected && currentInsulinTotal + medicationCost > getInsulinLimit();
                 const isAllowedForPlan = DataService.isMedicationAllowedForPlan(medicine, selectedPlan);
                 const isRestricted = !isAllowedForPlan;
-                const isDisabled = isSelected || isExcluded || wouldExceedLimit || isRestricted;
+                const isDisabled = isExcluded || wouldExceedLimit || isRestricted;
 
                 return (
-                  <button
+                  <div
                     key={`${selectedIngredientGroup.key}-${medicine.medicineNameAndStrength}-${index}`}
-                    onClick={() => handleSelectMedication(medicine)}
-                    disabled={isDisabled}
-                    className={`w-full text-left p-3 rounded-xl border transition-all ${
+                    className={`rounded-xl border transition-all ${
                       isSelected
-                        ? 'border-emerald-200 bg-emerald-50 cursor-not-allowed'
+                        ? 'border-emerald-200 bg-emerald-50'
                         : isExcluded
-                          ? 'border-violet-200 bg-violet-50/40 cursor-not-allowed'
+                          ? 'border-violet-200 bg-violet-50/40'
                           : isRestricted
-                            ? 'border-orange-200 bg-orange-50 cursor-not-allowed opacity-80'
+                            ? 'border-orange-200 bg-orange-50 opacity-80'
                             : wouldExceedLimit
-                              ? 'border-red-200 bg-red-50 cursor-not-allowed opacity-80'
-                              : 'border-slate-200 hover:border-[#6366f1]/40 hover:bg-slate-50'
+                              ? 'border-red-200 bg-red-50 opacity-80'
+                              : 'border-slate-200'
                     }`}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="font-medium text-slate-900">
-                            {medicine.medicineNameAndStrength}
+                    <button
+                      type="button"
+                      onClick={() => handleBrandCardClick(medicine)}
+                      disabled={isDisabled}
+                      className={`w-full text-left p-3 rounded-xl transition-all ${
+                        isDisabled
+                          ? 'cursor-not-allowed'
+                          : 'cursor-pointer hover:bg-slate-50/80'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-medium text-slate-900">{parsed.brandName}</p>
+                            {parsed.strengths.length === 1 && (
+                              <span className="text-xs text-slate-500">{parsed.strengths[0]}</span>
+                            )}
+                            {hasMultipleStrengths && !isSelected && (
+                              <span className="text-xs text-slate-500">
+                                {parsed.strengths.length} strengths
+                              </span>
+                            )}
+                            {isSelected && (
+                              <span className="brand-badge-selected">
+                                {selectedStrength ? `Selected ${selectedStrength}` : 'Selected'}
+                              </span>
+                            )}
+                            {isExcluded && (
+                              <span className="brand-badge">Already Prescribed</span>
+                            )}
+                            {coverage.formularyStatus === 'unlisted' && (
+                              <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded font-medium">
+                                Cap-limited
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-600 mt-1">
+                            Class: {medicine.medicineClass}
                           </p>
+                          <p className="text-xs text-slate-600 mt-0.5">
+                            Ingredient: {medicine.activeIngredient}
+                          </p>
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {coverage.fundingSource && (
+                              <FundingSourceBadge source={coverage.fundingSource} compact />
+                            )}
+                          </div>
+                          {coverage.fundingLagWarning && (
+                            <p className="text-amber-700 text-xs mt-1 leading-relaxed">
+                              {coverage.fundingLagWarning}
+                            </p>
+                          )}
+                          {coverage.cibFundingNote && (
+                            <p className="text-orange-700 text-xs mt-1">{coverage.cibFundingNote}</p>
+                          )}
+                          {coverage.copayRisk && (
+                            <p className="text-amber-700 text-xs mt-1">
+                              Co-pay risk: patient may pay above CDA cap.
+                            </p>
+                          )}
+                          {isRestricted && medicine.planRestriction && (
+                            <p className="text-orange-600 text-xs mt-1">
+                              {medicine.planRestriction.type === 'only'
+                                ? `Available on: ${medicine.planRestriction.plans.join(', ')} only`
+                                : `Not available on: ${medicine.planRestriction.plans.join(', ')}`}
+                            </p>
+                          )}
+                          {isRestricted && !medicine.planRestriction && (
+                            <p className="text-orange-600 text-xs mt-1">
+                              Not available on selected plan.
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0 mt-1">
                           {isSelected && (
-                            <span className="brand-badge-selected">Selected</span>
-                          )}
-                          {isExcluded && (
-                            <span className="brand-badge">Already Prescribed</span>
-                          )}
-                          {coverage.formularyStatus === 'unlisted' && (
-                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs rounded font-medium">
-                              Cap-limited
-                            </span>
+                            <div className="brand-check">
+                              <Check className="w-4 h-4 text-white" />
+                            </div>
                           )}
                         </div>
-                        <p className="text-xs text-slate-600 mt-1">
-                          Class: {medicine.medicineClass}
-                        </p>
-                        <p className="text-xs text-slate-600 mt-0.5">
-                          Ingredient: {medicine.activeIngredient}
-                        </p>
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                          {coverage.fundingSource && (
-                            <FundingSourceBadge source={coverage.fundingSource} compact />
-                          )}
-                          {coverage.isDiseaseModifying === false && (
-                            <span className="px-2 py-0.5 bg-orange-100 text-orange-800 text-xs rounded font-medium">
-                              Non-DMT
-                            </span>
-                          )}
-                        </div>
-                        {coverage.fundingLagWarning && (
-                          <p className="text-amber-700 text-xs mt-1 leading-relaxed">
-                            {coverage.fundingLagWarning}
-                          </p>
-                        )}
-                        {coverage.cibFundingNote && (
-                          <p className="text-orange-700 text-xs mt-1">{coverage.cibFundingNote}</p>
-                        )}
-                        {coverage.copayRisk && (
-                          <p className="text-amber-700 text-xs mt-1">
-                            Co-pay risk: patient may pay above CDA cap.
-                          </p>
-                        )}
-                        {isRestricted && medicine.planRestriction && (
-                          <p className="text-orange-600 text-xs mt-1">
-                            {medicine.planRestriction.type === 'only'
-                              ? `Available on: ${medicine.planRestriction.plans.join(', ')} only`
-                              : `Not available on: ${medicine.planRestriction.plans.join(', ')}`}
-                          </p>
-                        )}
-                        {isRestricted && !medicine.planRestriction && (
-                          <p className="text-orange-600 text-xs mt-1">
-                            Not available on selected plan.
-                          </p>
-                        )}
                       </div>
-                      {isSelected && (
-                        <div className="brand-check mt-1">
-                          <Check className="w-4 h-4 text-white" />
-                        </div>
-                      )}
-                    </div>
-                  </button>
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -461,9 +583,13 @@ const MedicationSelection = ({
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <p className="font-medium text-gray-900">{med.activeIngredient || 'Unknown ingredient'}</p>
-                    <p className="text-sm text-gray-600">Brand: {med.medicineNameAndStrength}</p>
+                    <p className="text-sm text-gray-600">
+                      {med.brandName || med.medicineNameAndStrength}
+                      {med.selectedStrength ? (
+                        <span className="text-slate-800 font-medium"> · {med.selectedStrength}</span>
+                      ) : null}
+                    </p>
                     <p className="text-xs text-slate-500 mt-0.5">Class: {med.medicineClass}</p>
-                    <p className="text-sm text-violet-600 font-semibold">CDA: {med.cdaAmount}</p>
                     <p className="text-xs text-slate-600 mt-1">{med.coverageNote}</p>
                     {med.fundingSource && (
                       <p className="text-xs text-slate-600 mt-1">
@@ -485,6 +611,90 @@ const MedicationSelection = ({
                       <p className="text-xs text-slate-500 mt-1">
                         Rationale: {med.unlistedClinicalRationale}
                       </p>
+                    )}
+                    {showSection12Fields && onUpdateSection12 && (
+                      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 border-t border-slate-200 pt-3">
+                        {(() => {
+                          const strengthOptions = getStrengthOptionsForMedication(med);
+                          const hasStrengthPicker = strengthOptions.length > 1;
+
+                          return (
+                            <div>
+                              <label
+                                htmlFor={`dosage-${index}`}
+                                className="block text-xs font-medium text-slate-600 mb-1"
+                              >
+                                Dosage
+                              </label>
+                              {hasStrengthPicker ? (
+                                <select
+                                  id={`dosage-${index}`}
+                                  className="input-field text-sm w-full"
+                                  value={med.selectedStrength || ''}
+                                  onChange={(e) =>
+                                    handleSelectedStrengthChange(index, med, e.target.value)
+                                  }
+                                >
+                                  <option value="" disabled>
+                                    Choose dosage…
+                                  </option>
+                                  {strengthOptions.map((strength) => (
+                                    <option key={strength} value={strength}>
+                                      {strength}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  id={`dosage-${index}`}
+                                  type="text"
+                                  className="input-field text-sm bg-slate-50"
+                                  value={med.selectedStrength || strengthOptions[0] || '—'}
+                                  readOnly
+                                />
+                              )}
+                            </div>
+                          );
+                        })()}
+                        <div>
+                          <label
+                            htmlFor={`duration-${index}`}
+                            className="block text-xs font-medium text-slate-600 mb-1"
+                          >
+                            Duration used
+                          </label>
+                          <input
+                            id={`duration-${index}`}
+                            type="text"
+                            className="input-field text-sm"
+                            placeholder="e.g. 6 months"
+                            value={med.durationUsed ?? ''}
+                            onChange={(e) =>
+                              onUpdateSection12(index, { durationUsed: e.target.value })
+                            }
+                          />
+                        </div>
+                        {showPatientInstructions && (
+                          <div className="sm:col-span-2">
+                            <label
+                              htmlFor={`instructions-${index}`}
+                              className="block text-xs font-medium text-slate-600 mb-1"
+                            >
+                              Patient instructions
+                            </label>
+                            <textarea
+                              id={`instructions-${index}`}
+                              className="textarea-field text-sm"
+                              rows={2}
+                              placeholder="e.g. Take with food, avoid alcohol, do not stop abruptly…"
+                              value={med.note ?? ''}
+                              onChange={(e) =>
+                                onUpdateSection12(index, { note: e.target.value })
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                   <div className="mr-2 mt-1">

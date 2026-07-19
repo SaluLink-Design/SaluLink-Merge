@@ -7,6 +7,7 @@ type AppView =
   | 'onboarding'
   | 'assistant-home'
   | 'dashboard'
+  | 'settings'
   | 'patient-info'
   | 'patient-profile'
   | 'patient-record'
@@ -42,8 +43,8 @@ const navItems: NavItem[] = [
   },
   {
     label: 'Settings',
-    activeViews: ['onboarding'],
-    targetView: 'onboarding',
+    activeViews: ['settings'],
+    targetView: 'settings',
   },
 ];
 
@@ -52,6 +53,7 @@ interface AppSidebarProps {
   onNavigate: (view: AppView) => void;
   onReportsNavigate?: () => void;
   userRole?: string | null;
+  onSignOut?: () => void;
 }
 
 const WORKSPACE_VIEWS: AppView[] = [
@@ -62,9 +64,16 @@ const WORKSPACE_VIEWS: AppView[] = [
   'case-options',
   'patient-info',
   'assistant-home',
+  'settings',
 ];
 
-const AppSidebar = ({ currentView, onNavigate, onReportsNavigate, userRole }: AppSidebarProps) => {
+const AppSidebar = ({
+  currentView,
+  onNavigate,
+  onReportsNavigate,
+  userRole,
+  onSignOut,
+}: AppSidebarProps) => {
   const inActiveWorkspace =
     Boolean(userRole) &&
     currentView !== 'landing' &&
@@ -143,6 +152,18 @@ const AppSidebar = ({ currentView, onNavigate, onReportsNavigate, userRole }: Ap
           );
         })}
       </nav>
+
+      {inActiveWorkspace && onSignOut ? (
+        <div className="px-4 py-4 border-t border-white/[0.08] space-y-2">
+          <button
+            type="button"
+            onClick={onSignOut}
+            className="w-full rounded-xl px-3 py-2 text-xs font-semibold bg-white/10 text-white hover:bg-white/15 transition-colors"
+          >
+            Sign out
+          </button>
+        </div>
+      ) : null}
     </aside>
   );
 };

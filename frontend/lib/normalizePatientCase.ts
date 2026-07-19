@@ -1,5 +1,6 @@
-import { PatientCase, TreatmentItem, SelectedMedication } from '@/types';
+import { PatientCase, TreatmentItem, SelectedMedication, EMPTY_PROGRESS_REVIEW } from '@/types';
 import { normalizeSelectedMedication } from '@/lib/medicationCoverage';
+import { normalizeTreatmentDecision } from '@/lib/followUpContext';
 import { resolveProfileId } from '@/lib/patientPortfolio';
 
 const normalizeTreatment = (t: TreatmentItem): TreatmentItem => ({
@@ -35,6 +36,9 @@ export const normalizePatientCase = (raw: Partial<PatientCase> & { id: string })
     createdAt,
     updatedAt,
     clinicalNote: raw.clinicalNote ?? '',
+    progressReview: raw.progressReview ?? { ...EMPTY_PROGRESS_REVIEW },
+    treatmentDecision: normalizeTreatmentDecision(raw.treatmentDecision),
+    clinicalReview: raw.clinicalReview,
     condition: raw.condition ?? '',
     icdCode: raw.icdCode ?? '',
     icdDescription: raw.icdDescription ?? '',
@@ -61,7 +65,9 @@ export const normalizePatientCase = (raw: Partial<PatientCase> & { id: string })
       ...ref,
       createdAt: ref.createdAt ? new Date(ref.createdAt) : new Date(),
     })),
+    investigationOrders: raw.investigationOrders ?? [],
     cibRecords: raw.cibRecords ?? [],
+    isWorkflowDraft: raw.isWorkflowDraft ?? false,
   };
 };
 

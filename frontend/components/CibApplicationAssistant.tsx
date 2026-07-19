@@ -100,7 +100,7 @@ const CibApplicationAssistant = ({
       </div>
 
       <p className="text-xs text-slate-600 mb-4 leading-relaxed">
-        The Chronic Illness Benefit covers <strong>disease-modifying therapy</strong> for listed PMB
+        The Chronic Illness Benefit covers <strong>listed PMB chronic medicines</strong> for registered
         conditions after approval. Attach test results, clinical reports, and complete disease-specific
         sections as required on the Discovery CIB form.
       </p>
@@ -121,7 +121,7 @@ const CibApplicationAssistant = ({
           <input
             type="text"
             className="input-field w-full"
-            placeholder="e.g. Metformin 500mg — disease-modifying therapy"
+            placeholder="e.g. Metformin 500mg — standard chronic treatment"
             value={submittedMedicine}
             onChange={(e) => setSubmittedMedicine(e.target.value)}
           />

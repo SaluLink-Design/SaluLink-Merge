@@ -134,6 +134,8 @@
     );
   }
 
+  /* Authi gradient — reserve for primary CTAs and key brand moments only.
+     Use solid indigo/slate for cards, icons, labels, and section titles. */
   .authi-gradient-text {
     background: linear-gradient(
       90deg,

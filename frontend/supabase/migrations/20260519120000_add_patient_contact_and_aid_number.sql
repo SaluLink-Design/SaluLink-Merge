@@ -28,12 +28,14 @@ END $$;
 -- Ensure RLS policy (no-op if already present)
 ALTER TABLE cases ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY IF NOT EXISTS "Allow public read access to cases"
+DROP POLICY IF EXISTS "Allow public read access to cases" ON cases;
+CREATE POLICY "Allow public read access to cases"
   ON cases FOR SELECT
   TO anon
   USING (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public insert to cases"
+DROP POLICY IF EXISTS "Allow public insert to cases" ON cases;
+CREATE POLICY "Allow public insert to cases"
   ON cases FOR INSERT
   TO anon
   WITH CHECK (true);

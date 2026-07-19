@@ -14,7 +14,9 @@ const mapProfile = (row: Record<string, unknown>): Profile => ({
   surname: (row.surname as string) || '',
   bhfNumber: (row.bhf_number as string) || '',
   speciality: (row.speciality as string) || '',
+  practitionerRole: (row.practitioner_role as Profile['practitionerRole']) || 'gp',
   phone: (row.phone as string) || '',
+  directoryListed: Boolean(row.directory_listed),
 });
 
 const mapWorkspace = (row: Record<string, unknown>): Workspace => ({
@@ -52,6 +54,10 @@ export async function signIn(email: string, password: string) {
 
 export async function signOut() {
   return supabase.auth.signOut();
+}
+
+export async function deleteMyAccount() {
+  return supabase.rpc('delete_my_account');
 }
 
 export async function getSession() {
@@ -104,7 +110,9 @@ export async function completeDoctorOnboarding(
     surname: input.surname.trim(),
     bhf_number: input.bhfNumber.trim(),
     speciality: input.speciality.trim(),
+    practitioner_role: input.practitionerRole,
     phone: input.phone.trim(),
+    directory_listed: input.directoryListed,
     updated_at: new Date().toISOString(),
   });
 
@@ -146,6 +154,29 @@ export async function completeDoctorOnboarding(
     workspace: mapWorkspace(workspaceRow),
     profile,
   };
+}
+
+export async function updateDirectoryListing(
+  userId: string,
+  directoryListed: boolean
+): Promise<Profile> {
+  const { error } = await supabase
+    .from('profiles')
+    .update({
+      directory_listed: directoryListed,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const profile = await fetchProfile(userId);
+  if (!profile) {
+    throw new Error('Profile could not be refreshed after saving directory settings.');
+  }
+  return profile;
 }
 
 export async function fetchWorkspaceMembers(workspaceId: string): Promise<WorkspaceMember[]> {

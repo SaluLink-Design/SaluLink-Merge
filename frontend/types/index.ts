@@ -121,6 +121,12 @@ export interface SelectedMedication {
   medicineClass: string;
   activeIngredient: string;
   medicineNameAndStrength: string;
+  /** Brand name parsed from the catalogue label */
+  brandName?: string;
+  /** Strength chosen by the doctor (e.g. "100mg") */
+  selectedStrength?: string;
+  /** Original Discovery catalogue label before strength selection */
+  catalogueLabel?: string;
   cdaAmount: string;
   formularyStatus: 'listed' | 'unlisted';
   coverageDecision: 'full_cover' | 'cap_limited';
@@ -141,6 +147,12 @@ export interface SelectedMedication {
   fundingLagWarning?: string;
   /** CIB-specific note (e.g. non-DMT may not be chronic-funded) */
   cibFundingNote?: string;
+  /** Section 12 — explicit dosage (e.g. "1 tablet twice daily") */
+  dosage?: string;
+  /** Section 12 — duration the medicine has been used */
+  durationUsed?: string;
+  /** Section 12 — date medicine was first prescribed for this condition */
+  dateFirstDiagnosed?: string;
 }
 
 export type MedicalPlan = 'Core' | 'Priority' | 'Saver' | 'Executive' | 'Comprehensive';
@@ -151,7 +163,75 @@ export type MedicalScheme = 'discovery' | 'gems';
 /** Patient-level chronic programme enrollment at intake */
 export type CibEnrollmentStatus = 'unregistered' | 'registered';
 
-export type ClaimType = 'diagnostic' | 'ongoing-management' | 'medication-report' | 'referral';
+export type ClaimType =
+  | 'diagnostic'
+  | 'ongoing-management'
+  | 'medication-report'
+  | 'referral'
+  | 'specialist-review';
+
+/** Structured patient progress captured at a chronic follow-up visit */
+export interface ProgressReview {
+  symptoms: string;
+  medicationAdherence: string;
+  sideEffects: string;
+  qualityOfLife: string;
+  patientReportedConcerns: string;
+}
+
+export type TreatmentDecisionType = 'continue' | 'change' | 'refer';
+
+/** Doctor-confirmed clinical review at a chronic follow-up visit */
+export type ClinicalReviewStatus = 'improving' | 'stable' | 'deteriorating';
+
+export interface TreatmentDecision {
+  decision: TreatmentDecisionType;
+  /** @deprecated — narrative lives in medication motivation or referral note */
+  rationale?: string;
+}
+
+/**
+ * GP medication path when Medication action is selected.
+ * renew = repeat script; escalate_change = refer to neurologist (no GP formulary swap).
+ */
+export type MedicationMode = 'renew' | 'escalate_change';
+
+/** Light side-effect / adherence capture on script renew (not full Progress Review) */
+export interface MedicationRenewNotes {
+  sideEffects: string;
+  adherence: string;
+}
+
+export const EMPTY_MEDICATION_RENEW_NOTES: MedicationRenewNotes = {
+  sideEffects: '',
+  adherence: '',
+};
+
+/**
+ * Multi-select actions for a GP follow-up visit.
+ * `continueOnly` is exclusive with the three work actions.
+ */
+export interface FollowUpVisitActions {
+  medication: boolean;
+  monitoring: boolean;
+  referral: boolean;
+  continueOnly: boolean;
+}
+
+export const EMPTY_FOLLOW_UP_VISIT_ACTIONS: FollowUpVisitActions = {
+  medication: false,
+  monitoring: false,
+  referral: false,
+  continueOnly: false,
+};
+
+export const EMPTY_PROGRESS_REVIEW: ProgressReview = {
+  symptoms: '',
+  medicationAdherence: '',
+  sideEffects: '',
+  qualityOfLife: '',
+  patientReportedConcerns: '',
+};
 
 export type DeliveryStatus = 'draft' | 'ready_to_send' | 'sent_to_patient';
 
@@ -171,6 +251,22 @@ export interface PatientCase {
   createdAt: Date;
   updatedAt: Date;
   clinicalNote: string;
+  /** Structured progress review from a chronic follow-up visit (legacy drafts) */
+  progressReview?: ProgressReview;
+  /** Multi-select visit actions for the GP follow-up shell */
+  followUpVisitActions?: FollowUpVisitActions;
+  /** GP medication sub-path when medication action selected */
+  medicationMode?: MedicationMode | null;
+  /** Side effects / adherence captured on script renew */
+  medicationRenewNotes?: MedicationRenewNotes;
+  /** Treatment decision — derived from visit actions for compatibility */
+  treatmentDecision?: TreatmentDecision;
+  /** Doctor-confirmed condition trajectory after clinical review */
+  clinicalReview?: ClinicalReviewStatus;
+  /** Doctor chose not to document new basket monitoring this visit */
+  monitoringSkipped?: boolean;
+  /** Clinical justification when monitoring was skipped */
+  monitoringSkipReason?: string;
   condition: string;
   icdCode: string;
   icdDescription: string;
@@ -191,6 +287,22 @@ export interface PatientCase {
   clinicalAppeals?: ClinicalAppeal[];
   /** CIB registration records — one per chronic condition the patient has registered */
   cibRecords?: CibRecord[];
+  /** True while a New Case Action workflow is in progress — hidden from portfolio until saved */
+  isWorkflowDraft?: boolean;
+  /** Visit-scoped investigation orders (ongoing follow-up / specialist review) */
+  investigationOrders?: InvestigationOrder[];
+  /**
+   * The GP has sent the CIB investigation referral and has no further CIB
+   * action until the specialist completes registration.
+   */
+  awaitingSpecialist?: boolean;
+  /**
+   * False once a specialist's completed CIB registration has been pulled into
+   * this case (via bulk dashboard check or manual case open) but the GP
+   * hasn't opened the case to see it yet — drives the dashboard badge.
+   * Undefined means "no specialist handoff has landed on this case".
+   */
+  specialistHandoffAcknowledged?: boolean;
 }
 
 export interface ReferralData {
@@ -226,5 +338,185 @@ export interface WorkflowStep {
   title: string;
   completed: boolean;
   active: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Care Actions — requirement → action → visibility tracking
+// ---------------------------------------------------------------------------
+
+export type ActionPhase = 'registration' | 'pathway' | 'ongoing';
+
+export type ActionStatus =
+  | 'not_started'
+  | 'requested'
+  | 'awaiting_completion'
+  | 'evidence_received'
+  | 'complete';
+
+export type CareActionOwner = 'gp' | 'external' | 'specialist' | 'patient';
+
+export interface CareActionEvidence {
+  notes?: string;
+  /** GP clinical interpretation — separate from raw external report */
+  interpretationNotes?: string;
+  documentIds?: string[];
+  completedAt?: string;
+  completedBy?: string;
+  orderedAt?: string;
+}
+
+export type PractitionerRole =
+  | 'gp'
+  | 'neurologist'
+  | 'specialist'
+  | 'clinical_technologist'
+  | 'pathologist';
+
+export type InvestigationOrderStatus = 'ordered' | 'results_received';
+
+export type InvestigationAssigneeRole = 'clinical_technologist' | 'pathologist';
+
+export interface InvestigationOrder {
+  id: string;
+  actionId: string;
+  treatmentCode: string;
+  label: string;
+  assigneeRole: InvestigationAssigneeRole;
+  status: InvestigationOrderStatus;
+  orderedAt: string;
+  resultsReceivedAt?: string;
+  resultsFiles?: string[];
+  rawFindings?: string;
+  coordinationType?: 'order' | 'referral';
+  referredAt?: string;
+  referredByRole?: PractitionerRole;
+  referralId?: string;
+  referralSpecialty?: string;
+  /** Distinguishes visit basket orders from CIB registration orders on chronic case */
+  visitContext?: 'ongoing';
+  caseId?: string;
+}
+
+export type RegistrationPhase =
+  | 'not_started'
+  | 'application_overview'
+  | 'requirements'
+  | 'awaiting_results'
+  | 'interpretation'
+  | 'icd_code'
+  | 'medication'
+  | 'clinical_pack'
+  | 'ready_to_submit';
+
+/** CIB registration evidence — separate from post-CIB treatment basket */
+export interface CibEvidenceItem {
+  code: string;
+  description: string;
+  documentation: {
+    notes: string;
+    images: string[];
+  };
+}
+
+export interface CareActionRequirementRef {
+  source: 'cib-rules' | 'basket' | 'workflow';
+  type: string;
+  code?: string;
+  label: string;
+}
+
+/** Tracked action instance — converts a scheme requirement into clinical next steps */
+export interface CareAction {
+  id: string;
+  profileId: string;
+  condition: string;
+  phase: ActionPhase;
+  requirementRef: CareActionRequirementRef;
+  title: string;
+  purpose: string;
+  likelyProviders: string[];
+  owner: CareActionOwner;
+  status: ActionStatus;
+  evidence?: CareActionEvidence;
+  treatmentItemCode?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ChronicRegistrationStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'complete'
+  | 'submitted';
+
+export type ChronicSubmissionStatus =
+  | 'draft'
+  | 'submitted'
+  | 'pending_review'
+  | 'approved';
+
+/** Longitudinal condition record — actions persist across visits */
+export interface ChronicConditionCase {
+  id: string;
+  profileId: string;
+  condition: string;
+  icdCode?: string;
+  /** Selected CIB approval path from cib-registration-rules.json */
+  approvalPathId?: string;
+  registrationStatus?: ChronicRegistrationStatus;
+  /** Wizard sub-phase inside Registration Workspace */
+  registrationPhase?: RegistrationPhase;
+  registrationCompletedAt?: string;
+  submissionStatus?: ChronicSubmissionStatus;
+  diagnosisDate?: string;
+  /** Evidence captured during CIB registration (not treatment basket) */
+  cibEvidence?: CibEvidenceItem[];
+  investigationOrders?: InvestigationOrder[];
+  careActions: CareAction[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CibRequirementType =
+  | 'gp_application'
+  | 'specialist_application'
+  | 'investigation'
+  | 'lab_result'
+  | 'supporting_diagnosis'
+  | 'clinical_notes'
+  | 'icd_confirmed'
+  | 'diagnosis_date';
+
+export interface CibRequirement {
+  type: CibRequirementType;
+  label: string;
+  code?: string;
+  specialty?: string;
+  /** How a GP coordinates this requirement — referral for tests not done in general practice */
+  gpPathway?: 'referral' | 'order' | 'perform';
+  referralSpecialty?: string;
+  performer?: string;
+  interpreter?: string;
+}
+
+export interface CibApprovalPath {
+  id: string;
+  label: string;
+  requirements: CibRequirement[];
+}
+
+export interface CibConditionRules {
+  condition: string;
+  approvalPaths: CibApprovalPath[];
+  commonRequirements: CibRequirement[];
+}
+
+export interface CareActivityTemplate {
+  id: string;
+  title: string;
+  provider: string;
+  purpose: string;
+  code?: string;
+  phase: 'pathway' | 'ongoing';
 }
 

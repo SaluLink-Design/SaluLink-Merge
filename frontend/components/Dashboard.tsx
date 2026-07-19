@@ -5,6 +5,7 @@ import { Search, Plus, User, Send } from 'lucide-react';
 import { PatientCase, ClaimType, DeliveryStatus } from '@/types';
 import { format } from 'date-fns';
 import { groupCasesByProfile } from '@/lib/patientPortfolio';
+import DirectoryListingSettings from '@/components/DirectoryListingSettings';
 
 interface DashboardProps {
   cases: PatientCase[];
@@ -18,13 +19,16 @@ interface DashboardProps {
   assistantName?: string;
   userRole?: string | null;
   onBackToWorkspace?: () => void;
+  onOpenSettings?: () => void;
+  newReferralCount?: number;
 }
 
 const claimTypeBadge: Record<ClaimType, { label: string; className: string }> = {
-  'diagnostic': { label: 'Diagnostic', className: 'bg-blue-100 text-blue-700 border border-blue-200' },
+  diagnostic: { label: 'Diagnostic', className: 'bg-blue-100 text-blue-700 border border-blue-200' },
   'ongoing-management': { label: 'Ongoing Mgmt', className: 'bg-emerald-100 text-emerald-700 border border-emerald-200' },
+  'specialist-review': { label: 'Specialist', className: 'bg-indigo-100 text-indigo-700 border border-indigo-200' },
   'medication-report': { label: 'Medication', className: 'bg-violet-100 text-violet-700 border border-violet-200' },
-  'referral': { label: 'Referral', className: 'bg-orange-100 text-orange-700 border border-orange-200' },
+  referral: { label: 'Referral', className: 'bg-orange-100 text-orange-700 border border-orange-200' },
 };
 
 const deliveryBadge: Record<DeliveryStatus, { label: string; className: string }> = {
@@ -45,6 +49,7 @@ const statusBadge: Record<string, { label: string; className: string }> = {
 const doctorClaimBadgeClass: Record<ClaimType, string> = {
   diagnostic: 'badge-blue',
   'ongoing-management': 'badge-green',
+  'specialist-review': 'badge-purple',
   'medication-report': 'badge-purple',
   referral: 'badge-orange',
 };
@@ -52,6 +57,28 @@ const doctorClaimBadgeClass: Record<ClaimType, string> = {
 /** Status column only — green pill for completed (not blue like claim type) */
 const DOCTOR_STATUS_PILL_BASE =
   'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border';
+
+/** True when any claim in the group has a specialist-completed CIB the GP hasn't opened yet. */
+const hasUnseenSpecialistHandoff = (claims: PatientCase[]): boolean =>
+  claims.some((c) => c.cibEnrollmentStatus === 'registered' && c.specialistHandoffAcknowledged === false);
+
+const SPECIALIST_HANDOFF_BADGE_CLASS =
+  'ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border bg-violet-100 text-violet-700 border-violet-200 whitespace-nowrap';
+
+/**
+ * True when a claim has an ordered/referred investigation still awaiting results.
+ * Only a local signal today — the specialist side of an ongoing-visit referral does not
+ * yet push a completion event back, so this reflects state as last synced on this device.
+ */
+const hasPendingInvestigation = (claims: PatientCase[]): boolean =>
+  claims.some(
+    (c) =>
+      c.awaitingSpecialist === true ||
+      c.investigationOrders?.some((o) => o.status === 'ordered')
+  );
+
+const PENDING_INVESTIGATION_BADGE_CLASS =
+  'ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border bg-amber-100 text-amber-800 border-amber-200 whitespace-nowrap';
 
 const doctorStatusPillClass = (status: PatientCase['status']): string => {
   switch (status) {
@@ -81,6 +108,8 @@ const Dashboard = ({
   assistantName,
   userRole,
   onBackToWorkspace,
+  onOpenSettings,
+  newReferralCount = 0,
 }: DashboardProps) => {
   const displayName =
     userRole === 'assistant'
@@ -149,16 +178,37 @@ const Dashboard = ({
                   : 'Chronic Condition Management — grouped by patient'}
               </p>
             </div>
-            {onBackToWorkspace && (
-              <button
-                type="button"
-                onClick={onBackToWorkspace}
-                className="self-start px-5 py-3 text-sm rounded-2xl font-semibold transition hover:opacity-90 authi-btn-primary text-white"
-              >
-                Back to workspace
-              </button>
-            )}
+            <div className="flex items-center gap-3 self-start">
+              {isDoctor && (
+                <a
+                  href="/referrals"
+                  className="px-5 py-3 text-sm rounded-2xl font-semibold transition hover:opacity-90 btn-secondary inline-flex items-center"
+                >
+                  Referrals
+                  {newReferralCount > 0 && (
+                    <span className="ml-2 inline-flex min-w-5 h-5 items-center justify-center rounded-full bg-indigo-600 px-1.5 text-[11px] text-white">
+                      {newReferralCount > 99 ? '99+' : newReferralCount}
+                    </span>
+                  )}
+                </a>
+              )}
+              {onBackToWorkspace && (
+                <button
+                  type="button"
+                  onClick={onBackToWorkspace}
+                  className="px-5 py-3 text-sm rounded-2xl font-semibold transition hover:opacity-90 authi-btn-primary text-white"
+                >
+                  Back to workspace
+                </button>
+              )}
+            </div>
           </div>
+
+          {onOpenSettings && (
+            <div className="mb-6">
+              <DirectoryListingSettings compact onOpenSettings={onOpenSettings} />
+            </div>
+          )}
 
           {/* Stats */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -284,7 +334,19 @@ const Dashboard = ({
                             <span className={ctClass}>{ctLabel}</span>
                           </td>
                           <td className="px-6 py-4">
-                            <span className={stClass}>{stLabel}</span>
+                            <div className="flex items-center">
+                              <span className={stClass}>{stLabel}</span>
+                              {hasUnseenSpecialistHandoff(group.claims) && (
+                                <span className={SPECIALIST_HANDOFF_BADGE_CLASS}>
+                                  Specialist completed CIB
+                                </span>
+                              )}
+                              {hasPendingInvestigation(group.claims) && (
+                                <span className={PENDING_INVESTIGATION_BADGE_CLASS}>
+                                  CIB awaiting specialist
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 text-sm text-slate-500">
                             {format(new Date(group.latestClaim.updatedAt), 'dd MMM yyyy')}
@@ -376,7 +438,21 @@ const Dashboard = ({
                         <td className="px-6 py-4 text-sm text-slate-500 font-mono">{group.patientId}</td>
                         <td className="px-6 py-4 text-sm text-slate-900 font-semibold">{group.claims.length}</td>
                         <td className="px-6 py-4">{renderBadge(ctBadge.label, ctBadge.className)}</td>
-                        <td className="px-6 py-4">{renderBadge(stBadge.label, stBadge.className)}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center">
+                            {renderBadge(stBadge.label, stBadge.className)}
+                            {hasUnseenSpecialistHandoff(group.claims) && (
+                              <span className={SPECIALIST_HANDOFF_BADGE_CLASS}>
+                                Specialist completed CIB
+                              </span>
+                            )}
+                            {hasPendingInvestigation(group.claims) && (
+                              <span className={PENDING_INVESTIGATION_BADGE_CLASS}>
+                                CIB awaiting specialist
+                              </span>
+                            )}
+                          </div>
+                        </td>
                         <td className="px-6 py-4">
                           {renderBadge(
                             deliveryBadge[group.latestClaim.deliveryStatus ?? 'draft'].label,

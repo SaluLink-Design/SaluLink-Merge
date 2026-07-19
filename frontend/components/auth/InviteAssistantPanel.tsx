@@ -53,7 +53,7 @@ export default function InviteAssistantPanel() {
         <div>
           <h3 className="text-lg font-semibold text-slate-900">Invite your assistant</h3>
           <p className="text-sm text-slate-500">
-            They will join this workspace as a collaborator and can create patient intake cases.
+            They join this workspace to run the claim workflow — intake, packaging, and patient delivery.
           </p>
         </div>
       </div>

@@ -1,0 +1,333 @@
+{
+  "version": "1.0.0",
+  "source": "Discovery Chronic Illness Benefit Application Form (encoded manually — add PDF to shared/data/)",
+  "conditions": [
+    {
+      "condition": "Epilepsy",
+      "approvalPaths": [
+        {
+          "id": "neurologist",
+          "label": "Neurologist application",
+          "requirements": [
+            { "type": "specialist_application", "specialty": "neurology", "label": "Neurologist CIB application" }
+          ]
+        },
+        {
+          "id": "gp_eeg",
+          "label": "GP application + EEG",
+          "requirements": [
+            { "type": "gp_application", "label": "GP CIB application" },
+            { "type": "investigation", "code": "2711", "label": "EEG (20–40 minute record)", "gpPathway": "referral", "referralSpecialty": "neurology", "performer": "clinical_technologist", "interpreter": "neurologist" }
+          ]
+        }
+      ],
+      "commonRequirements": [
+        { "type": "icd_confirmed", "label": "ICD-10 code confirmed" },
+        { "type": "diagnosis_date", "label": "Date of diagnosis recorded" },
+        { "type": "clinical_notes", "label": "Clinical notes supporting chronic epilepsy" }
+      ]
+    },
+    {
+      "condition": "Hypothyroidism",
+      "approvalPaths": [
+        {
+          "id": "standard",
+          "label": "Standard GP application",
+          "requirements": [
+            { "type": "gp_application", "label": "GP CIB application" },
+            { "type": "lab_result", "code": "TSH", "label": "TSH result" },
+            { "type": "lab_result", "code": "T4", "label": "T4 (free or total) result" },
+            { "type": "supporting_diagnosis", "label": "Supporting diagnosis documentation" }
+          ]
+        }
+      ],
+      "commonRequirements": [
+        { "type": "icd_confirmed", "label": "ICD-10 code confirmed" },
+        { "type": "diagnosis_date", "label": "Date of diagnosis recorded" }
+      ]
+    },
+    {
+      "condition": "Diabetes Mellitus Type 2",
+      "approvalPaths": [
+        {
+          "id": "standard",
+          "label": "Standard GP application",
+          "requirements": [
+            { "type": "gp_application", "label": "GP CIB application" },
+            { "type": "lab_result", "code": "HbA1c", "label": "HbA1c result" },
+            { "type": "supporting_diagnosis", "label": "Supporting diagnosis (fasting glucose or OGTT if applicable)" }
+          ]
+        }
+      ],
+      "commonRequirements": [
+        { "type": "icd_confirmed", "label": "ICD-10 code confirmed" },
+        { "type": "diagnosis_date", "label": "Date of diagnosis recorded" },
+        { "type": "clinical_notes", "label": "Clinical notes documenting diabetes management" }
+      ]
+    },
+    {
+      "condition": "Diabetes Mellitus Type 1",
+      "approvalPaths": [
+        {
+          "id": "standard",
+          "label": "Standard GP application",
+          "requirements": [
+            { "type": "gp_application", "label": "GP CIB application" },
+            { "type": "lab_result", "code": "HbA1c", "label": "HbA1c result" },
+            { "type": "supporting_diagnosis", "label": "Supporting diagnosis documentation" }
+          ]
+        }
+      ],
+      "commonRequirements": [
+        { "type": "icd_confirmed", "label": "ICD-10 code confirmed" },
+        { "type": "diagnosis_date", "label": "Date of diagnosis recorded" }
+      ]
+    },
+    {
+      "condition": "Hypertension",
+      "approvalPaths": [
+        {
+          "id": "standard",
+          "label": "Standard GP application",
+          "requirements": [
+            { "type": "gp_application", "label": "GP CIB application" },
+            { "type": "lab_result", "code": "BP", "label": "Blood pressure readings (≥2 occasions)" },
+            { "type": "supporting_diagnosis", "label": "Supporting diagnosis documentation" }
+          ]
+        }
+      ],
+      "commonRequirements": [
+        { "type": "icd_confirmed", "label": "ICD-10 code confirmed" },
+        { "type": "diagnosis_date", "label": "Date of diagnosis recorded" }
+      ]
+    },
+    {
+      "condition": "Asthma",
+      "approvalPaths": [
+        {
+          "id": "standard",
+          "label": "Standard GP application",
+          "requirements": [
+            { "type": "gp_application", "label": "GP CIB application" },
+            { "type": "supporting_diagnosis", "label": "Spirometry or peak flow supporting chronic asthma" },
+            { "type": "clinical_notes", "label": "Clinical notes documenting asthma control" }
+          ]
+        },
+        {
+          "id": "specialist",
+          "label": "Pulmonologist / specialist application",
+          "requirements": [
+            { "type": "specialist_application", "specialty": "pulmonology", "label": "Specialist CIB application" }
+          ]
+        }
+      ],
+      "commonRequirements": [
+        { "type": "icd_confirmed", "label": "ICD-10 code confirmed" },
+        { "type": "diagnosis_date", "label": "Date of diagnosis recorded" }
+      ]
+    },
+    {
+      "condition": "Chronic Renal Disease",
+      "approvalPaths": [
+        {
+          "id": "standard",
+          "label": "Standard application with renal workup",
+          "requirements": [
+            { "type": "gp_application", "label": "GP or nephrologist CIB application" },
+            { "type": "lab_result", "code": "eGFR", "label": "eGFR / creatinine result" },
+            { "type": "lab_result", "code": "Creatinine", "label": "Serum creatinine" },
+            { "type": "supporting_diagnosis", "label": "Supporting renal disease documentation" }
+          ]
+        }
+      ],
+      "commonRequirements": [
+        { "type": "icd_confirmed", "label": "ICD-10 code confirmed" },
+        { "type": "diagnosis_date", "label": "Date of diagnosis recorded" }
+      ]
+    },
+    {
+      "condition": "Rheumatoid Arthritis",
+      "approvalPaths": [
+        {
+          "id": "rheumatologist",
+          "label": "Rheumatologist application",
+          "requirements": [
+            { "type": "specialist_application", "specialty": "rheumatology", "label": "Rheumatologist CIB application" }
+          ]
+        },
+        {
+          "id": "gp_rf",
+          "label": "GP application + serology",
+          "requirements": [
+            { "type": "gp_application", "label": "GP CIB application" },
+            { "type": "lab_result", "code": "RF", "label": "Rheumatoid factor or anti-CCP" },
+            { "type": "supporting_diagnosis", "label": "Supporting diagnosis documentation" }
+          ]
+        }
+      ],
+      "commonRequirements": [
+        { "type": "icd_confirmed", "label": "ICD-10 code confirmed" },
+        { "type": "diagnosis_date", "label": "Date of diagnosis recorded" }
+      ]
+    },
+    {
+      "condition": "Bipolar Mood Disorder",
+      "approvalPaths": [
+        {
+          "id": "psychiatrist",
+          "label": "Psychiatrist application",
+          "requirements": [
+            { "type": "specialist_application", "specialty": "psychiatry", "label": "Psychiatrist CIB application" }
+          ]
+        },
+        {
+          "id": "gp_psych",
+          "label": "GP application + psychiatric assessment",
+          "requirements": [
+            { "type": "gp_application", "label": "GP CIB application" },
+            { "type": "supporting_diagnosis", "label": "Psychiatric assessment or specialist report" }
+          ]
+        }
+      ],
+      "commonRequirements": [
+        { "type": "icd_confirmed", "label": "ICD-10 code confirmed" },
+        { "type": "diagnosis_date", "label": "Date of diagnosis recorded" },
+        { "type": "clinical_notes", "label": "Clinical notes supporting bipolar diagnosis" }
+      ]
+    },
+    {
+      "condition": "HIV/AIDS",
+      "approvalPaths": [
+        {
+          "id": "standard",
+          "label": "Standard application with virology",
+          "requirements": [
+            { "type": "gp_application", "label": "GP or infectious disease specialist application" },
+            { "type": "lab_result", "code": "CD4", "label": "CD4 count" },
+            { "type": "lab_result", "code": "ViralLoad", "label": "HIV viral load" },
+            { "type": "supporting_diagnosis", "label": "Confirmatory HIV test documentation" }
+          ]
+        }
+      ],
+      "commonRequirements": [
+        { "type": "icd_confirmed", "label": "ICD-10 code confirmed" },
+        { "type": "diagnosis_date", "label": "Date of diagnosis recorded" }
+      ]
+    },
+    {
+      "condition": "Cardiac Failure",
+      "approvalPaths": [
+        {
+          "id": "cardiologist",
+          "label": "Cardiologist application",
+          "requirements": [
+            { "type": "specialist_application", "specialty": "cardiology", "label": "Cardiologist CIB application" }
+          ]
+        },
+        {
+          "id": "gp_echo",
+          "label": "GP application + echocardiogram",
+          "requirements": [
+            { "type": "gp_application", "label": "GP CIB application" },
+            { "type": "investigation", "code": "2713", "label": "Echocardiogram" },
+            { "type": "lab_result", "code": "BNP", "label": "BNP or NT-proBNP result" },
+            { "type": "supporting_diagnosis", "label": "Supporting cardiac failure documentation" }
+          ]
+        }
+      ],
+      "commonRequirements": [
+        { "type": "icd_confirmed", "label": "ICD-10 code confirmed" },
+        { "type": "diagnosis_date", "label": "Date of diagnosis recorded" },
+        { "type": "clinical_notes", "label": "Clinical notes supporting chronic cardiac failure" }
+      ]
+    },
+    {
+      "condition": "Cardiomyopathy",
+      "approvalPaths": [
+        {
+          "id": "cardiologist",
+          "label": "Cardiologist application",
+          "requirements": [
+            { "type": "specialist_application", "specialty": "cardiology", "label": "Cardiologist CIB application" }
+          ]
+        },
+        {
+          "id": "gp_echo",
+          "label": "GP application + echocardiogram",
+          "requirements": [
+            { "type": "gp_application", "label": "GP CIB application" },
+            { "type": "investigation", "code": "2713", "label": "Echocardiogram" },
+            { "type": "supporting_diagnosis", "label": "Supporting cardiomyopathy documentation" }
+          ]
+        }
+      ],
+      "commonRequirements": [
+        { "type": "icd_confirmed", "label": "ICD-10 code confirmed" },
+        { "type": "diagnosis_date", "label": "Date of diagnosis recorded" }
+      ]
+    },
+    {
+      "condition": "Chronic Obstructive Pulmonary Disease",
+      "approvalPaths": [
+        {
+          "id": "standard",
+          "label": "GP application + spirometry",
+          "requirements": [
+            { "type": "gp_application", "label": "GP CIB application" },
+            { "type": "investigation", "code": "2714", "label": "Spirometry" },
+            { "type": "supporting_diagnosis", "label": "Supporting COPD diagnosis documentation" }
+          ]
+        },
+        {
+          "id": "pulmonologist",
+          "label": "Pulmonologist application",
+          "requirements": [
+            { "type": "specialist_application", "specialty": "pulmonology", "label": "Pulmonologist CIB application" }
+          ]
+        }
+      ],
+      "commonRequirements": [
+        { "type": "icd_confirmed", "label": "ICD-10 code confirmed" },
+        { "type": "diagnosis_date", "label": "Date of diagnosis recorded" },
+        { "type": "clinical_notes", "label": "Clinical notes documenting COPD" }
+      ]
+    },
+    {
+      "condition": "Haemophilia",
+      "approvalPaths": [
+        {
+          "id": "haematologist",
+          "label": "Haematologist application",
+          "requirements": [
+            { "type": "specialist_application", "specialty": "haematology", "label": "Haematologist CIB application" },
+            { "type": "lab_result", "code": "FactorVIII", "label": "Factor VIII or IX level documentation" },
+            { "type": "supporting_diagnosis", "label": "Supporting haemophilia diagnosis documentation" }
+          ]
+        }
+      ],
+      "commonRequirements": [
+        { "type": "icd_confirmed", "label": "ICD-10 code confirmed" },
+        { "type": "diagnosis_date", "label": "Date of diagnosis recorded" }
+      ]
+    },
+    {
+      "condition": "Hyperlipidaemia",
+      "approvalPaths": [
+        {
+          "id": "standard",
+          "label": "Standard GP application",
+          "requirements": [
+            { "type": "gp_application", "label": "GP CIB application" },
+            { "type": "lab_result", "code": "LDL", "label": "LDL cholesterol result" },
+            { "type": "lab_result", "code": "TotalChol", "label": "Total cholesterol result" },
+            { "type": "supporting_diagnosis", "label": "Supporting hyperlipidaemia documentation" }
+          ]
+        }
+      ],
+      "commonRequirements": [
+        { "type": "icd_confirmed", "label": "ICD-10 code confirmed" },
+        { "type": "diagnosis_date", "label": "Date of diagnosis recorded" }
+      ]
+    }
+  ]
+}

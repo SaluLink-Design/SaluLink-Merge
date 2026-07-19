@@ -8,27 +8,13 @@ export interface MedicationCoverageDecision {
   cdaCapAmount?: number;
   /** Which benefit bucket will fund this medicine given the patient's current benefit state */
   fundingSource: FundingSource;
-  /** True when the medicine qualifies as disease-modifying therapy under CIB policy */
+  /** Listed PMB formulary medicines are chronic-eligible under Discovery rules */
   isDiseaseModifying: boolean;
   /** Warning when medicine was prescribed before CIB approval (funding lag scenario) */
   fundingLagWarning?: string;
-  /** Note when medicine may not qualify as disease-modifying therapy under CIB */
+  /** Note when medicine is not on the chronic formulary */
   cibFundingNote?: string;
 }
-
-/**
- * Keywords in medicine class or name that signal disease-modifying (not symptomatic) therapy.
- * CIB only covers disease-modifying medicines — symptomatic-only medicines may not be chronic-funded.
- */
-const DISEASE_MODIFYING_KEYWORDS = [
-  'ace inhibitor', 'arb', 'angiotensin', 'beta blocker', 'statin', 'metformin',
-  'insulin', 'thyroxine', 'dmard', 'biologic', 'immunosuppressant', 'inhaled corticosteroid',
-  'bronchodilator', 'antiepileptic', 'antiretroviral', 'dmard', 'hydroxychloroquine',
-  'sulfasalazine', 'methotrexate', 'leflunomide', 'losartan', 'amlodipine', 'atorvastatin',
-  'rosuvastatin', 'lisinopril', 'enalapril', 'ramipril', 'bisoprolol', 'carvedilol',
-  'furosemide', 'spironolactone', 'levothyroxine', 'salbutamol', 'tiotropium', 'fluticasone',
-  'budesonide', 'salmeterol', 'formoterol', 'omeprazole', 'pantoprazole',
-];
 
 const deriveFundingSource = (
   formularyStatus: 'listed' | 'unlisted',
@@ -40,11 +26,6 @@ const deriveFundingSource = (
   return 'chronic_benefit';
 };
 
-const deriveDiseaseModifying = (medicine: MedicineItem): boolean => {
-  const source = `${medicine.medicineClass} ${medicine.activeIngredient} ${medicine.medicineNameAndStrength}`.toLowerCase();
-  return DISEASE_MODIFYING_KEYWORDS.some((kw) => source.includes(kw));
-};
-
 const buildFundingLagWarning = (
   benefitState: BenefitState | undefined,
   fundingSource: FundingSource
@@ -54,19 +35,6 @@ const buildFundingLagWarning = (
   }
   if (!benefitState || benefitState === 'unregistered') {
     return 'No CIB registration exists yet. Clinically appropriate to prescribe now; expected funding is day-to-day until CIB is approved. Submit a CIB application to activate the chronic pathway.';
-  }
-  return undefined;
-};
-
-const buildCibFundingNote = (
-  isDiseaseModifying: boolean,
-  benefitState: BenefitState | undefined
-): string | undefined => {
-  if (!isDiseaseModifying) {
-    return 'CIB covers disease-modifying therapy only. Symptomatic-only medicines may not be chronic-funded even if the condition is approved.';
-  }
-  if (benefitState && benefitState !== 'unregistered' && benefitState !== 'pending_cib_review') {
-    return undefined;
   }
   return undefined;
 };
@@ -97,29 +65,28 @@ export const buildCoverageDecision = (
   benefitState?: BenefitState
 ): MedicationCoverageDecision => {
   const formularyStatus = deriveFormularyStatus(medicine);
+  const isFormularyListed = formularyStatus === 'listed';
   const cdaRaw =
     selectedPlan === 'Core' || selectedPlan === 'Priority' || selectedPlan === 'Saver'
       ? medicine.cdaCore
       : medicine.cdaExecutive || medicine.cdaCore;
   const cdaCapAmount = parseCdaAmount(cdaRaw);
   const fundingSource = deriveFundingSource(formularyStatus, benefitState);
-  const isDiseaseModifying = deriveDiseaseModifying(medicine);
   const fundingLagWarning = buildFundingLagWarning(benefitState, fundingSource);
-  const cibFundingNote = buildCibFundingNote(isDiseaseModifying, benefitState);
 
   const isChronicPathway =
     benefitState &&
     benefitState !== 'unregistered' &&
     benefitState !== 'pending_cib_review';
 
-  if (formularyStatus === 'listed') {
+  const cibFundingNote = isFormularyListed
+    ? undefined
+    : 'Not on the chronic disease medicine list — may require co-payment or MSA funding.';
+
+  if (isFormularyListed) {
     const coverageNote = isChronicPathway
-      ? isDiseaseModifying
-        ? 'Formulary listed — expected funding via Chronic Illness Benefit (disease-modifying).'
-        : 'Formulary listed, but may not qualify as disease-modifying therapy under CIB.'
-      : isDiseaseModifying
-        ? 'Formulary listed. Safe to prescribe now; chronic funding activates after CIB approval.'
-        : 'Formulary listed, but may not qualify as disease-modifying therapy under CIB.';
+      ? 'Formulary listed — expected funding via Chronic Illness Benefit.'
+      : 'Formulary listed. Chronic funding activates after CIB approval.';
     return {
       formularyStatus,
       coverageDecision: 'full_cover',
@@ -127,7 +94,7 @@ export const buildCoverageDecision = (
       coverageNote,
       cdaCapAmount,
       fundingSource,
-      isDiseaseModifying,
+      isDiseaseModifying: true,
       fundingLagWarning,
       cibFundingNote,
     };
@@ -140,7 +107,7 @@ export const buildCoverageDecision = (
     coverageNote: 'Unlisted medicine: cover is limited to CDA cap and may create a co-payment.',
     cdaCapAmount,
     fundingSource,
-    isDiseaseModifying,
+    isDiseaseModifying: false,
     fundingLagWarning,
     cibFundingNote,
   };
@@ -169,7 +136,7 @@ export const normalizeSelectedMedication = (medication: MedicationInput): Select
     coverageNote,
     cdaCapAmount,
     fundingSource: medication.fundingSource,
-    isDiseaseModifying: medication.isDiseaseModifying,
+    isDiseaseModifying: medication.isDiseaseModifying ?? formularyStatus === 'listed',
     fundingLagWarning: medication.fundingLagWarning,
     cibFundingNote: medication.cibFundingNote,
   };

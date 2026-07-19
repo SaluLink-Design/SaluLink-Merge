@@ -2,9 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  // Disable caching for CSV files in development
   async headers() {
-    return [
+    const headers = [
       {
         source: '/:path*.csv',
         headers: [
@@ -15,6 +14,22 @@ const nextConfig = {
         ],
       },
     ];
+
+    // Dev chunks are rebuilt in place. Prevent an open browser tab from
+    // retaining a chunk URL that disappeared after a restart or recompile.
+    if (process.env.NODE_ENV === 'development') {
+      headers.push({
+        source: '/_next/static/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'no-store, no-cache, must-revalidate',
+          },
+        ],
+      });
+    }
+
+    return headers;
   },
 }
 

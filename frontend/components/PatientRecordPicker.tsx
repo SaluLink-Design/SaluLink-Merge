@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Search, User, FileText } from 'lucide-react';
+import { Search, User } from 'lucide-react';
 import { format } from 'date-fns';
 import type { PatientCase } from '@/types';
 import { buildPatientRecord } from '@/lib/patientRecord';
@@ -93,8 +93,7 @@ const PatientRecordPicker = ({ cases, onSelectPatient, onBack }: PatientRecordPi
                       <p className="text-xs text-slate-400">
                         Updated {format(group.latestUpdated, 'dd MMM yyyy')}
                       </p>
-                      <span className="inline-flex items-center gap-1 mt-2 text-xs font-semibold authi-gradient-text">
-                        <FileText className="w-3.5 h-3.5" />
+                      <span className="badge-blue mt-2">
                         Open record
                       </span>
                     </div>

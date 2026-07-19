@@ -1,4 +1,8 @@
-import { TreatmentItem } from '@/types';
+import { TreatmentItem, BenefitState } from '@/types';
+import { computeEvidenceCompleteness } from '@/lib/benefitState';
+
+/** Minimum CIB evidence pack score before leaving final evidence review */
+export const EVIDENCE_REVIEW_MIN_SCORE = 80;
 
 export type DiagnosticEvidenceType = 'lab' | 'imaging' | 'other';
 
@@ -29,11 +33,66 @@ export const classifyDiagnosticTest = (description: string): DiagnosticEvidenceT
   return 'other';
 };
 
-export const isTestDocumented = (treatment: TreatmentItem): boolean => {
-  const notes = treatment.documentation?.notes?.trim() ?? '';
-  const images = treatment.documentation?.images?.length ?? 0;
-  return notes.length > 0 || images > 0;
+/** True when attachment payload is a non-empty saved file (base64 JSON or legacy string). */
+export const hasValidAttachments = (images: string[] | undefined): boolean => {
+  if (!images?.length) return false;
+  return images.some((img) => {
+    const raw = img?.trim();
+    if (!raw) return false;
+    try {
+      const parsed = JSON.parse(raw) as { data?: string; name?: string };
+      return Boolean(parsed.data?.length || parsed.name?.length);
+    } catch {
+      return raw.length > 20;
+    }
+  });
 };
+
+export const countValidAttachments = (images: string[] | undefined): number => {
+  if (!images?.length) return 0;
+  return images.filter((img) => {
+    const raw = img?.trim();
+    if (!raw) return false;
+    try {
+      const parsed = JSON.parse(raw) as { data?: string; name?: string };
+      return Boolean(parsed.data?.length || parsed.name?.length);
+    } catch {
+      return raw.length > 20;
+    }
+  }).length;
+};
+
+export interface TreatmentDocumentationStatus {
+  documented: boolean;
+  hasNotes: boolean;
+  hasFiles: boolean;
+  fileCount: number;
+  /** Short label for checklists, e.g. "2 files attached" */
+  detailLabel: string;
+}
+
+export const getTreatmentDocumentationStatus = (
+  treatment: TreatmentItem
+): TreatmentDocumentationStatus => {
+  const hasNotes = Boolean(treatment.documentation?.notes?.trim());
+  const fileCount = countValidAttachments(treatment.documentation?.images);
+  const hasFiles = fileCount > 0;
+  const documented = hasNotes || hasFiles;
+
+  let detailLabel = 'needs findings or uploads';
+  if (hasNotes && hasFiles) {
+    detailLabel = `findings + ${fileCount} file${fileCount !== 1 ? 's' : ''}`;
+  } else if (hasNotes) {
+    detailLabel = 'written findings';
+  } else if (hasFiles) {
+    detailLabel = `${fileCount} file${fileCount !== 1 ? 's' : ''} attached`;
+  }
+
+  return { documented, hasNotes, hasFiles, fileCount, detailLabel };
+};
+
+export const isTestDocumented = (treatment: TreatmentItem): boolean =>
+  getTreatmentDocumentationStatus(treatment).documented;
 
 export const deriveEvidenceFromDiagnostics = (treatments: TreatmentItem[]) => {
   const labTests = treatments.filter((t) => classifyDiagnosticTest(t.description) === 'lab');
@@ -71,36 +130,66 @@ export const deriveEvidenceFromDiagnostics = (treatments: TreatmentItem[]) => {
   };
 };
 
+export interface EvidenceReviewGateInput {
+  treatments: TreatmentItem[];
+  conditionName: string;
+  icdCode: string;
+  clinicalNote: string;
+  diagnosisDate: string;
+  benefitState?: BenefitState;
+  medicationsFormularyAligned?: boolean;
+}
+
 export const canProceedFromEvidenceReview = (
-  treatments: TreatmentItem[],
-  icdCode: string,
-  diagnosisDate: string
-): { ok: boolean; reason?: string } => {
+  input: EvidenceReviewGateInput
+): { ok: boolean; reason?: string; score?: number } => {
+  const {
+    treatments,
+    conditionName,
+    icdCode,
+    clinicalNote,
+    diagnosisDate,
+    benefitState = 'unregistered',
+    medicationsFormularyAligned = true,
+  } = input;
+
   if (treatments.length === 0) {
     return { ok: false, reason: 'Select at least one diagnostic test before continuing.' };
   }
+
   const derived = deriveEvidenceFromDiagnostics(treatments);
   if (!derived.allTestsDocumented) {
     return {
       ok: false,
-      reason: `Document findings for: ${derived.undocumentedTests.map((t) => t.description).join(', ')}`,
+      reason: `Add written findings or upload supporting documents for: ${derived.undocumentedTests.map((t) => t.description).join(', ')}`,
     };
   }
-  if (!icdCode?.trim()) {
-    return { ok: false, reason: 'Confirm ICD-10 code before continuing.' };
-  }
+
   if (!diagnosisDate?.trim()) {
     return { ok: false, reason: 'Enter date of diagnosis before continuing.' };
   }
-  if (!derived.hasLabResults) {
+
+  const evidence = computeEvidenceCompleteness({
+    conditionName,
+    icdCode,
+    clinicalNote,
+    benefitState,
+    diagnosisDate,
+    diagnosticTreatments: treatments,
+    medicationsFormularyAligned,
+  });
+
+  if (evidence.score < EVIDENCE_REVIEW_MIN_SCORE) {
+    const missing =
+      evidence.missingItems.length > 0
+        ? ` Still needed: ${evidence.missingItems.join('; ')}.`
+        : '';
     return {
       ok: false,
-      reason:
-        'Attach findings or uploads for at least one diagnostic test (lab, EEG, or other non-imaging test).',
+      score: evidence.score,
+      reason: `Evidence pack is ${evidence.score}% complete (minimum ${EVIDENCE_REVIEW_MIN_SCORE}%).${missing}`,
     };
   }
-  if (derived.requiresImaging && !derived.hasImaging) {
-    return { ok: false, reason: 'Attach imaging reports where imaging tests were ordered.' };
-  }
-  return { ok: true };
+
+  return { ok: true, score: evidence.score };
 };

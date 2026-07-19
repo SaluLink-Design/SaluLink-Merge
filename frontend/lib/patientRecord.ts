@@ -1,5 +1,6 @@
 import {
   ClaimType,
+  ChronicConditionCase,
   PatientCase,
   ReferralData,
   SelectedMedication,
@@ -10,8 +11,8 @@ import {
   isTestDocumented,
   type DiagnosticEvidenceType,
 } from '@/lib/diagnosticEvidence';
-import { getPatientCibRecords, getPatientEnrollmentStatus } from '@/lib/benefitState';
-import { filterCasesByProfile } from '@/lib/patientPortfolio';
+import { getPatientCibRecords, getPatientCibStatusLabel } from '@/lib/benefitState';
+import { filterPortfolioClaimsByProfile } from '@/lib/patientPortfolio';
 
 export type TestSource = 'diagnostic' | 'ongoing';
 
@@ -46,6 +47,8 @@ export interface PatientRecordTestRow {
   evidenceType: DiagnosticEvidenceType;
   documented: boolean;
   notesPreview: string;
+  fullNotes: string;
+  images: string[];
   attachmentCount: number;
   timesCompleted?: number;
   maxCovered?: number;
@@ -66,6 +69,7 @@ export interface PatientRecordVisitRow {
   status: string;
   condition: string;
   clinicalNoteExcerpt: string;
+  fullClinicalNote: string;
 }
 
 export interface PatientRecordReferralRow extends ReferralData {
@@ -115,6 +119,8 @@ function treatmentToRow(
     evidenceType,
     documented: isTestDocumented(treatment),
     notesPreview: notesPreview(treatment),
+    fullNotes: treatment.documentation?.notes?.trim() ?? '',
+    images: treatment.documentation?.images ?? [],
     attachmentCount: attachmentCount(treatment),
     timesCompleted: treatment.timesCompleted,
     maxCovered: treatment.maxCovered,
@@ -153,10 +159,6 @@ function collectMedications(patientCases: PatientCase[]): PatientRecordMedicatio
       }
     };
     (c.medications ?? []).forEach(addMed);
-    (c.medicationReports ?? []).forEach((report) => {
-      report.newMedications?.forEach(addMed);
-      report.originalMedications?.forEach(addMed);
-    });
   }
   return Array.from(medMap.values()).sort(
     (a, b) => b.lastPrescribed.getTime() - a.lastPrescribed.getTime()
@@ -166,6 +168,7 @@ function collectMedications(patientCases: PatientCase[]): PatientRecordMedicatio
 const claimTypeLabels: Record<ClaimType, string> = {
   diagnostic: 'Diagnostic',
   'ongoing-management': 'Ongoing Mgmt',
+  'specialist-review': 'Specialist Review',
   'medication-report': 'Medication Report',
   referral: 'Referral',
 };
@@ -177,9 +180,10 @@ export function claimTypeLabel(claimType?: ClaimType): string {
 
 export function buildPatientRecord(
   allCases: PatientCase[],
-  profileId: string
+  profileId: string,
+  chronicCases?: ChronicConditionCase[]
 ): PatientRecord | null {
-  const patientCases = filterCasesByProfile(allCases, profileId).sort(
+  const patientCases = filterPortfolioClaimsByProfile(allCases, profileId).sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
 
@@ -241,6 +245,7 @@ export function buildPatientRecord(
       condition: c.condition || 'No condition recorded',
       clinicalNoteExcerpt:
         note.length > 200 ? `${note.slice(0, 197)}…` : note || '—',
+      fullClinicalNote: note,
     };
   });
 
@@ -260,10 +265,11 @@ export function buildPatientRecord(
       medicalAidNumber: latest.medicalAidNumber || '—',
       patientEmail: latest.patientEmail || '—',
       patientPhone: latest.patientPhone || '—',
-      cibEnrollmentStatus:
-        getPatientEnrollmentStatus(allCases, medicalPatientId) === 'registered'
-          ? 'Registered on CIB'
-          : 'Not registered on CIB',
+      cibEnrollmentStatus: getPatientCibStatusLabel(
+        allCases,
+        medicalPatientId,
+        chronicCases?.filter((c) => c.profileId === profileId)
+      ),
     },
     conditions: Array.from(conditionMap.values()).sort(
       (a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime()

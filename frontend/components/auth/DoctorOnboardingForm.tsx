@@ -3,6 +3,16 @@
 import { useState } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import type { DoctorOnboardingInput } from '@/lib/workspaceTypes';
+import type { PractitionerRole } from '@/types';
+import { canListInSpecialistDirectory } from '@/lib/specialistDirectory';
+
+const ROLE_OPTIONS: { value: PractitionerRole; label: string }[] = [
+  { value: 'gp', label: 'General Practitioner (GP)' },
+  { value: 'neurologist', label: 'Neurologist' },
+  { value: 'specialist', label: 'Other Specialist' },
+  { value: 'clinical_technologist', label: 'Clinical Technologist' },
+  { value: 'pathologist', label: 'Pathologist / Laboratory' },
+];
 
 export default function DoctorOnboardingForm() {
   const { completeOnboarding, signOutAccount } = useAuth();
@@ -11,12 +21,28 @@ export default function DoctorOnboardingForm() {
     surname: '',
     bhfNumber: '',
     speciality: '',
+    practitionerRole: 'gp',
     phone: '',
     practiceName: '',
+    directoryListed: false,
   });
   const [errors, setErrors] = useState<Partial<Record<keyof DoctorOnboardingInput, string>>>({});
   const [submitError, setSubmitError] = useState('');
+  const [needsDbSetup, setNeedsDbSetup] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const copySetupSql = async () => {
+    try {
+      const response = await fetch('/SUPABASE_WORKSPACE_SETUP.sql');
+      if (!response.ok) throw new Error('Could not load setup SQL');
+      const sql = await response.text();
+      await navigator.clipboard.writeText(sql);
+      setCopyStatus('copied');
+    } catch {
+      setCopyStatus('failed');
+    }
+  };
 
   const update = (key: keyof DoctorOnboardingInput, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -27,8 +53,10 @@ export default function DoctorOnboardingForm() {
     if (!form.firstName.trim()) next.firstName = 'First name is required';
     if (!form.surname.trim()) next.surname = 'Surname is required';
     if (!form.practiceName.trim()) next.practiceName = 'Practice name is required';
-    if (!form.speciality.trim()) next.speciality = 'Speciality is required';
     if (!form.phone.trim()) next.phone = 'Telephone is required';
+    if (canListInSpecialistDirectory(form.practitionerRole) && !form.speciality.trim()) {
+      next.speciality = 'Speciality is required for specialist accounts';
+    }
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -36,20 +64,26 @@ export default function DoctorOnboardingForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitError('');
+    setNeedsDbSetup(false);
+    setCopyStatus('idle');
     if (!validate()) return;
 
     setIsSubmitting(true);
     const { error } = await completeOnboarding(form);
     setIsSubmitting(false);
     if (error) {
-      const needsDbSetup =
-        error.includes('profiles') ||
-        error.includes('schema cache') ||
-        error.includes('workspaces');
+      const missingTables =
+        /relation .* does not exist/i.test(error) ||
+        /could not find the table/i.test(error) ||
+        (/schema cache/i.test(error) && /table/i.test(error) && !/column/i.test(error));
+
+      setNeedsDbSetup(missingTables);
       setSubmitError(
-        needsDbSetup
-          ? 'Database tables are missing. In Supabase open SQL Editor, paste and run the file SUPABASE_WORKSPACE_SETUP.sql from this project, then try again.'
-          : error
+        missingTables
+          ? 'Database tables are missing. Run the workspace setup SQL in Supabase once, then try again.'
+          : error.includes('practitioner_role') && error.includes('schema cache')
+            ? 'Your profiles table is missing the practitioner_role column. In Supabase SQL Editor run: ALTER TABLE profiles ADD COLUMN IF NOT EXISTS practitioner_role text NOT NULL DEFAULT \'gp\'; then reload the schema (Settings → API → Reload) and try again.'
+            : error
       );
     }
   };
@@ -111,6 +145,45 @@ export default function DoctorOnboardingForm() {
 
           <div className="grid gap-6 md:grid-cols-2">
             <div>
+              <label className="text-sm font-medium text-slate-700">Practitioner role</label>
+              <select
+                value={form.practitionerRole}
+                onChange={(e) => {
+                  const practitionerRole = e.target.value as PractitionerRole;
+                  setForm((prev) => ({
+                    ...prev,
+                    practitionerRole,
+                    directoryListed: canListInSpecialistDirectory(practitionerRole)
+                      ? prev.directoryListed
+                      : false,
+                  }));
+                }}
+                className="authi-input mt-2 px-4 py-3 w-full"
+              >
+                {ROLE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-slate-500">
+                Determines your CIB registration pathway automatically.
+              </p>
+            </div>
+            <div>
+              <label className="text-sm font-medium text-slate-700">Speciality (display)</label>
+              <input
+                value={form.speciality}
+                onChange={(e) => update('speciality', e.target.value)}
+                className={`authi-input mt-2 px-4 py-3 w-full ${errors.speciality ? 'border-rose-400' : ''}`}
+                placeholder="e.g. Neurology"
+              />
+              {errors.speciality && <p className="mt-1 text-sm text-rose-500">{errors.speciality}</p>}
+            </div>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-2">
+            <div>
               <label className="text-sm font-medium text-slate-700">BHF practice number</label>
               <input
                 value={form.bhfNumber}
@@ -118,15 +191,6 @@ export default function DoctorOnboardingForm() {
                 className="authi-input mt-2 px-4 py-3 w-full"
                 placeholder="Optional for MVP"
               />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700">Speciality</label>
-              <input
-                value={form.speciality}
-                onChange={(e) => update('speciality', e.target.value)}
-                className={`authi-input mt-2 px-4 py-3 w-full ${errors.speciality ? 'border-rose-400' : ''}`}
-              />
-              {errors.speciality && <p className="mt-1 text-sm text-rose-500">{errors.speciality}</p>}
             </div>
           </div>
 
@@ -141,25 +205,72 @@ export default function DoctorOnboardingForm() {
             {errors.phone && <p className="mt-1 text-sm text-rose-500">{errors.phone}</p>}
           </div>
 
+          {canListInSpecialistDirectory(form.practitionerRole) && (
+            <label className="flex items-start gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/50 p-4 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.directoryListed}
+                onChange={(e) => setForm((prev) => ({ ...prev, directoryListed: e.target.checked }))}
+                className="mt-0.5 w-4 h-4"
+              />
+              <span className="text-sm text-slate-700">
+                <span className="font-medium">Accept direct referrals through SaluLink</span>
+                <span className="block text-xs text-slate-500 mt-0.5">
+                  GPs can find your name, role, speciality, and practice and deliver a case directly
+                  to your referral inbox. Your email, phone, and BHF number stay private. You can
+                  switch this off in Settings.
+                </span>
+              </span>
+            </label>
+          )}
+
           {submitError && (
             <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
               <p>{submitError}</p>
-              {submitError.includes('SUPABASE_WORKSPACE_SETUP') && (
-                <ol className="mt-3 list-decimal list-inside space-y-1 text-rose-700">
-                  <li>
-                    Open{' '}
-                    <a
-                      href="https://supabase.com/dashboard/project/homkufroaufrejnpnawf/sql/new"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-semibold underline"
-                    >
-                      Supabase SQL Editor
-                    </a>
-                  </li>
-                  <li>Copy all of <code className="text-xs">SUPABASE_WORKSPACE_SETUP.sql</code></li>
-                  <li>Paste → Run → refresh this page and submit again</li>
-                </ol>
+              {needsDbSetup && (
+                <div className="mt-3 space-y-3 text-rose-700">
+                  <ol className="list-decimal list-inside space-y-1">
+                    <li>
+                      <button
+                        type="button"
+                        onClick={() => void copySetupSql()}
+                        className="font-semibold underline"
+                      >
+                        Copy setup SQL
+                      </button>
+                      {copyStatus === 'copied' && (
+                        <span className="ml-2 text-emerald-700">Copied.</span>
+                      )}
+                      {copyStatus === 'failed' && (
+                        <span className="ml-2">
+                          Copy failed — open{' '}
+                          <a
+                            href="/SUPABASE_WORKSPACE_SETUP.sql"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="font-semibold underline"
+                          >
+                            SUPABASE_WORKSPACE_SETUP.sql
+                          </a>{' '}
+                          manually.
+                        </span>
+                      )}
+                    </li>
+                    <li>
+                      Open{' '}
+                      <a
+                        href="https://supabase.com/dashboard/project/homkufroaufrejnpnawf/sql/new"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold underline"
+                      >
+                        Supabase SQL Editor
+                      </a>
+                    </li>
+                    <li>Paste → Run (should say Success)</li>
+                    <li>Refresh this page and submit again</li>
+                  </ol>
+                </div>
               )}
             </div>
           )}

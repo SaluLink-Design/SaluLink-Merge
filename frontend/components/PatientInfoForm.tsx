@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowLeft, Save, Stethoscope, Activity, Pill } from 'lucide-react';
+import { ArrowLeft, Save, Stethoscope, Activity } from 'lucide-react';
 import { MedicalPlan, ClaimType, MedicalScheme, CibEnrollmentStatus } from '@/types';
 
 interface PatientInfoFormProps {
@@ -28,15 +28,15 @@ export interface PatientInfo {
 const registeredClaimTypeOptions: { value: ClaimType; label: string; description: string; icon: React.ReactNode }[] = [
   {
     value: 'ongoing-management',
-    label: 'Ongoing Management',
-    description: 'Monitoring and treatment protocols for an existing chronic condition.',
+    label: 'Patient Follow-Up Visit',
+    description: 'Routine chronic review for a registered patient.',
     icon: <Activity className="w-5 h-5" />,
   },
   {
-    value: 'medication-report',
-    label: 'Medication Report',
-    description: 'Follow-up notes and new prescriptions for a registered chronic patient.',
-    icon: <Pill className="w-5 h-5" />,
+    value: 'diagnostic',
+    label: 'Diagnostic Claim',
+    description: 'New or changed condition requiring full diagnostic workflow.',
+    icon: <Stethoscope className="w-5 h-5" />,
   },
 ];
 
@@ -338,7 +338,7 @@ const PatientInfoForm = ({
                       >
                         <span className="flex items-center gap-2 font-semibold text-sm">
                           <span className="text-[#6366f1]">{opt.icon}</span>
-                          <span className={selected ? 'authi-gradient-text' : 'text-slate-700'}>
+                          <span className={selected ? 'text-slate-900' : 'text-slate-700'}>
                             {opt.label}
                           </span>
                         </span>

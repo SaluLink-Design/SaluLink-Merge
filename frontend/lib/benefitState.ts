@@ -1,5 +1,6 @@
 import {
   BenefitState,
+  ChronicConditionCase,
   CibEnrollmentStatus,
   CibRecord,
   ClaimType,
@@ -59,11 +60,117 @@ export const getPatientEnrollmentStatus = (
   cases: PatientCase[],
   patientId: string
 ): CibEnrollmentStatus => {
+  const patientKey = patientId.trim().toLowerCase();
   const patientCases = cases
-    .filter((c) => c.patientId === patientId)
+    .filter((c) => c.patientId.trim().toLowerCase() === patientKey)
     .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  if (patientCases.some((c) => c.cibEnrollmentStatus === 'registered')) return 'registered';
   return patientCases[0]?.cibEnrollmentStatus ?? 'unregistered';
 };
+
+export type PatientCibStatusLabel =
+  | 'Not registered'
+  | 'Submitted — pending review'
+  | 'Registered';
+
+function chronicCasesForPatient(
+  chronicCases: ChronicConditionCase[] | undefined,
+  patientId: string,
+  cases: PatientCase[]
+): ChronicConditionCase[] {
+  if (!chronicCases?.length) return [];
+
+  const patientKey = patientId.trim().toLowerCase();
+  const profileIds = new Set(
+    cases
+      .filter((c) => c.patientId.trim().toLowerCase() === patientKey)
+      .map((c) => c.profileId)
+      .filter((id): id is string => Boolean(id))
+  );
+
+  // Callers often pass chronic cases already scoped to this profile. Trust those.
+  // Also include any chronic case whose profileId matches this patient's cases —
+  // but do NOT drop pre-scoped cases when synced patient rows lack profileId.
+  if (profileIds.size === 0) return chronicCases;
+
+  const matched = chronicCases.filter((c) => profileIds.has(c.profileId));
+  return matched.length > 0 ? matched : chronicCases;
+}
+
+function isSubmittedRegistrationStatus(status: string | undefined): boolean {
+  return status === 'submitted' || status === 'complete';
+}
+
+function hasSubmittedChronicRegistration(
+  chronicCases: ChronicConditionCase[] | undefined,
+  patientId: string,
+  cases: PatientCase[]
+): boolean {
+  return chronicCasesForPatient(chronicCases, patientId, cases).some((c) =>
+    isSubmittedRegistrationStatus(c.registrationStatus)
+  );
+}
+
+function patientHasRegisteredSignal(cases: PatientCase[], patientId: string): boolean {
+  const patientKey = patientId.trim().toLowerCase();
+  return cases.some((c) => {
+    if (c.patientId.trim().toLowerCase() !== patientKey) return false;
+    if (c.cibEnrollmentStatus === 'registered') return true;
+    if ((c.cibRecords ?? []).some(
+      (r) =>
+        r.benefitState === 'pending_cib_review' || isWorkflowB(r.benefitState)
+    )) {
+      return true;
+    }
+    // Completed diagnostic with ICD = CIB registration pack finished in practice
+    if (
+      c.status === 'completed' &&
+      Boolean(c.condition?.trim()) &&
+      Boolean(c.icdCode?.trim())
+    ) {
+      return true;
+    }
+    return false;
+  });
+}
+
+/** True when post-registration visit types (follow-up, specialist review) may start */
+export function canStartRegisteredPatientActions(
+  cases: PatientCase[],
+  patientId: string,
+  chronicCases?: ChronicConditionCase[]
+): boolean {
+  if (!patientId.trim()) return false;
+  if (getPatientEnrollmentStatus(cases, patientId) === 'registered') return true;
+  if (patientHasRegisteredSignal(cases, patientId)) return true;
+  // Prefer scoped chronic list; if none match filtering, still honour any submitted
+  // chronic case the caller handed in (profile-scoped lists from PatientProfile).
+  if (
+    chronicCases?.some((c) => isSubmittedRegistrationStatus(c.registrationStatus))
+  ) {
+    return true;
+  }
+  if (hasSubmittedChronicRegistration(chronicCases, patientId, cases)) return true;
+  return getPatientCibRecords(cases, patientId).some((r) => isWorkflowB(r.benefitState));
+}
+
+export function getPatientCibStatusLabel(
+  cases: PatientCase[],
+  patientId: string,
+  chronicCases?: ChronicConditionCase[]
+): PatientCibStatusLabel {
+  if (getPatientEnrollmentStatus(cases, patientId) === 'registered') return 'Registered';
+  const cibRecords = getPatientCibRecords(cases, patientId);
+  if (cibRecords.some((r) => isWorkflowB(r.benefitState))) return 'Registered';
+  if (
+    hasSubmittedChronicRegistration(chronicCases, patientId, cases) ||
+    cibRecords.some((r) => r.benefitState === 'pending_cib_review') ||
+    patientHasRegisteredSignal(cases, patientId)
+  ) {
+    return 'Submitted — pending review';
+  }
+  return 'Not registered';
+}
 
 export const getPatientMedicalScheme = (
   cases: PatientCase[],
@@ -110,10 +217,14 @@ export const dedupeCibRecordsByCondition = (records: CibRecord[]): CibRecord[] =
   return Array.from(map.values());
 };
 
-export const getPatientCibRecords = (cases: PatientCase[], patientId: string): CibRecord[] =>
-  dedupeCibRecordsByCondition(
-    cases.filter((c) => c.patientId === patientId).flatMap((c) => c.cibRecords ?? [])
+export const getPatientCibRecords = (cases: PatientCase[], patientId: string): CibRecord[] => {
+  const patientKey = patientId.trim().toLowerCase();
+  return dedupeCibRecordsByCondition(
+    cases
+      .filter((c) => c.patientId.trim().toLowerCase() === patientKey)
+      .flatMap((c) => c.cibRecords ?? [])
   );
+};
 
 export const getCibRecordForCondition = (
   cases: PatientCase[],
@@ -203,10 +314,10 @@ export const computeEvidenceCompleteness = (input: EvidenceInput): EvidenceCompl
     { key: 'diagnosisDate', label: 'Date of diagnosis recorded', ok: diagnosisDateRecorded },
     {
       key: 'labResults',
-      label: 'Lab / procedure results attached (e.g. pathology, EEG)',
+      label: 'Lab / procedure results or uploads attached (e.g. pathology, EEG, PDF)',
       ok: labResultsAttached,
     },
-    { key: 'imaging', label: 'Imaging reports attached (if applicable)', ok: imagingAttached },
+    { key: 'imaging', label: 'Imaging reports or scans uploaded (if applicable)', ok: imagingAttached },
     { key: 'clinicalNotes', label: 'Clinical notes included', ok: clinicalNotesIncluded },
     { key: 'pmbMatch', label: 'PMB CDL condition match', ok: pmbCdlConditionMatch },
     { key: 'formulary', label: 'Medicines align with chronic formulary', ok: medicineFormularyAligned },
@@ -238,7 +349,11 @@ export const reconcileMedicationsForBenefitState = (
 ): SelectedMedication[] => {
   const catalogue = DataService.getMedicinesForCondition(condition);
   return medications.map((med) => {
-    const match = catalogue.find((m) => m.medicineNameAndStrength === med.medicineNameAndStrength);
+    const match = catalogue.find(
+      (m) =>
+        (med.catalogueLabel && m.medicineNameAndStrength === med.catalogueLabel) ||
+        m.medicineNameAndStrength === med.medicineNameAndStrength
+    );
     if (!match) return med;
     const coverage = buildCoverageDecision(match, plan, benefitState);
     return {

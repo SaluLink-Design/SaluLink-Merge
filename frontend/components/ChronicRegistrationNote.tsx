@@ -57,7 +57,6 @@ const ChronicRegistrationNote = ({
             <div key={index} className="p-3 bg-gray-50 border border-gray-200 rounded-lg">
               <p className="font-medium text-gray-900 text-sm">{med.medicineNameAndStrength}</p>
               <p className="text-xs text-gray-600">{med.activeIngredient}</p>
-              <p className="text-xs text-primary-600 font-medium">CDA: {med.cdaAmount}</p>
             </div>
           ))}
         </div>

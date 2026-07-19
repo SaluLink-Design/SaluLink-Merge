@@ -1,0 +1,161 @@
+{
+  "version": "1.1.0",
+  "source": "Discovery ongoing management basket coordination hints",
+  "items": [
+    {
+      "code": "2711",
+      "category": "monitoring_tests",
+      "coordinationType": "referral",
+      "assignedTo": ["Clinical Technologist", "Neurologist"],
+      "clinicalHint": "GP refers for EEG recording. A clinical technologist performs the test; a neurologist may interpret results.",
+      "roleHints": {
+        "gp": {
+          "label": "Refer for EEG",
+          "hint": "Refer to neurology or a neurodiagnostic unit for EEG recording. Document results once the report is available.",
+          "primaryCta": "refer"
+        },
+        "neurologist": {
+          "label": "Order EEG",
+          "hint": "Order EEG recording — assign to clinical technologist on your team. Document or interpret once results return.",
+          "primaryCta": "order"
+        },
+        "specialist": {
+          "label": "Order EEG",
+          "hint": "Order EEG recording — assign to clinical technologist. Document or interpret once results return.",
+          "primaryCta": "order"
+        },
+        "clinical_technologist": {
+          "label": "Perform EEG",
+          "hint": "Perform the recording and upload raw results for neurologist interpretation.",
+          "primaryCta": "document"
+        }
+      }
+    },
+    {
+      "code": "2712",
+      "category": "interpretation_reports",
+      "coordinationType": "referral",
+      "assignedTo": ["Neurologist"],
+      "clinicalHint": "Professional interpretation of EEG — typically completed by a neurologist after the recording.",
+      "roleHints": {
+        "gp": {
+          "label": "Document interpretation",
+          "hint": "Document specialist EEG interpretation once available — GP does not interpret EEG.",
+          "primaryCta": "document"
+        },
+        "neurologist": {
+          "label": "Document interpretation",
+          "hint": "Record your professional EEG interpretation and clinical conclusion.",
+          "primaryCta": "interpret"
+        },
+        "specialist": {
+          "label": "Document interpretation",
+          "hint": "Record professional EEG interpretation and clinical conclusion.",
+          "primaryCta": "interpret"
+        }
+      }
+    },
+    {
+      "code": "4081",
+      "category": "monitoring_tests",
+      "coordinationType": "order",
+      "assignedTo": ["Pathology Laboratory"],
+      "clinicalHint": "Order via pathology. Document the result and clinical interpretation here once available.",
+      "roleHints": {
+        "gp": {
+          "label": "Order lab",
+          "hint": "Order via pathology. Document the result once available.",
+          "primaryCta": "order"
+        },
+        "neurologist": {
+          "label": "Order lab",
+          "hint": "Order drug level via pathology. Document result and interpretation once available.",
+          "primaryCta": "order"
+        },
+        "specialist": {
+          "label": "Order lab",
+          "hint": "Order via pathology. Document the result once available.",
+          "primaryCta": "order"
+        }
+      }
+    },
+    {
+      "code": "3755",
+      "category": "monitoring_tests",
+      "coordinationType": "order",
+      "assignedTo": ["Pathology Laboratory", "GP"],
+      "clinicalHint": "Order laboratory test via pathology and document results here.",
+      "roleHints": {
+        "gp": { "label": "Order lab", "hint": "Order laboratory test via pathology and document results here.", "primaryCta": "order" },
+        "neurologist": { "label": "Order lab", "hint": "Order laboratory test via pathology and document results here.", "primaryCta": "order" },
+        "specialist": { "label": "Order lab", "hint": "Order laboratory test via pathology and document results here.", "primaryCta": "order" }
+      }
+    },
+    {
+      "code": "3797",
+      "category": "monitoring_tests",
+      "coordinationType": "order",
+      "assignedTo": ["Pathology Laboratory", "GP"],
+      "clinicalHint": "Order laboratory test via pathology and document results here.",
+      "roleHints": {
+        "gp": { "label": "Order lab", "hint": "Order laboratory test via pathology and document results here.", "primaryCta": "order" },
+        "neurologist": { "label": "Order lab", "hint": "Order laboratory test via pathology and document results here.", "primaryCta": "order" },
+        "specialist": { "label": "Order lab", "hint": "Order laboratory test via pathology and document results here.", "primaryCta": "order" }
+      }
+    },
+    {
+      "code": "3003",
+      "category": "monitoring_tests",
+      "coordinationType": "referral",
+      "assignedTo": ["Ophthalmologist"],
+      "clinicalHint": "Refer for fundus examination; document findings once the report is available.",
+      "roleHints": {
+        "gp": { "label": "Refer for fundus exam", "hint": "Refer to ophthalmology; document findings once the report is available.", "primaryCta": "refer" },
+        "neurologist": { "label": "Refer for fundus exam", "hint": "Refer to ophthalmology; document findings once available.", "primaryCta": "refer" },
+        "specialist": { "label": "Refer for fundus exam", "hint": "Refer to ophthalmology; document findings once available.", "primaryCta": "refer" }
+      }
+    },
+    {
+      "code": "3004",
+      "category": "monitoring_tests",
+      "coordinationType": "referral",
+      "assignedTo": ["Ophthalmologist"],
+      "clinicalHint": "Refer for fundus examination; document findings once the report is available.",
+      "roleHints": {
+        "gp": { "label": "Refer for fundus exam", "hint": "Refer to ophthalmology; document findings once the report is available.", "primaryCta": "refer" },
+        "neurologist": { "label": "Refer for fundus exam", "hint": "Refer to ophthalmology; document findings once available.", "primaryCta": "refer" },
+        "specialist": { "label": "Refer for fundus exam", "hint": "Refer to ophthalmology; document findings once available.", "primaryCta": "refer" }
+      }
+    },
+    {
+      "code": "2713",
+      "category": "monitoring_tests",
+      "coordinationType": "referral",
+      "assignedTo": ["Cardiologist", "Clinical Technologist"],
+      "clinicalHint": "Refer for echocardiogram; document findings and report here.",
+      "roleHints": {
+        "gp": { "label": "Refer for echo", "hint": "Refer for echocardiogram; document findings once the report is available.", "primaryCta": "refer" },
+        "neurologist": { "label": "Order echo", "hint": "Order echocardiogram via cardiology or CT unit; document findings once available.", "primaryCta": "order" },
+        "specialist": { "label": "Order echo", "hint": "Order echocardiogram; document findings once available.", "primaryCta": "order" }
+      }
+    },
+    {
+      "code": "2714",
+      "category": "monitoring_tests",
+      "coordinationType": "order",
+      "assignedTo": ["GP", "Pulmonologist"],
+      "clinicalHint": "Spirometry may be performed in practice or referred — document results here.",
+      "roleHints": {
+        "gp": { "label": "Order / perform spirometry", "hint": "Perform in practice or refer — document results here.", "primaryCta": "order" },
+        "neurologist": { "label": "Refer spirometry", "hint": "Refer for spirometry if needed; document results once available.", "primaryCta": "refer" },
+        "specialist": { "label": "Order spirometry", "hint": "Order or refer spirometry; document results here.", "primaryCta": "order" }
+      }
+    }
+  ],
+  "defaults": {
+    "category": "monitoring_tests",
+    "coordinationType": "document",
+    "assignedTo": ["GP"],
+    "clinicalHint": "Document monitoring results and clinical findings for this visit."
+  }
+}

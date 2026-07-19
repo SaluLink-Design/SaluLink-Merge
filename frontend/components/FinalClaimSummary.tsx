@@ -67,7 +67,7 @@ const FinalClaimSummary = ({
               <p className={`text-sm mt-1 ${workflowA ? 'text-violet-700' : 'text-emerald-700'}`}>
                 {workflowA
                   ? 'Medicines may fund from day-to-day until Discovery approves CIB. Retain diagnosis date and prescription evidence for retrospective linking.'
-                  : 'Expected funding via Chronic Illness Benefit where formulary and disease-modifying rules are met.'}
+                  : 'Expected funding via Chronic Illness Benefit for formulary-listed medicines.'}
               </p>
               {benefitState && (
                 <p className="text-xs mt-2 font-medium text-slate-600">
@@ -215,9 +215,6 @@ const FinalClaimSummary = ({
                         {med.fundingSource && (
                           <FundingSourceBadge source={med.fundingSource} compact />
                         )}
-                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700 border border-emerald-200">
-                          CDA: {med.cdaAmount}
-                        </span>
                         <span
                           className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                             med.formularyStatus === 'unlisted'
@@ -260,9 +257,21 @@ const FinalClaimSummary = ({
                         <p className="text-sm text-slate-700 mt-1 whitespace-pre-wrap">{report.followUpNotes}</p>
                       </div>
                     )}
+                    {report.originalMedications.length > 0 && report.newMedications.length > 0 && (
+                      <div className="mt-3">
+                        <p className="text-xs font-medium text-slate-500">Previous medication(s)</p>
+                        <ul className="mt-2 space-y-1">
+                          {report.originalMedications.map((med, medIndex) => (
+                            <li key={medIndex} className="text-sm text-slate-600">
+                              {med.activeIngredient} - {med.medicineNameAndStrength}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     {report.newMedications.length > 0 && (
                       <div className="mt-3">
-                        <p className="text-xs font-medium text-slate-500">New medications added</p>
+                        <p className="text-xs font-medium text-emerald-700">New medication prescribed</p>
                         <ul className="mt-2 space-y-1">
                           {report.newMedications.map((med, medIndex) => (
                             <li key={medIndex} className="text-sm text-slate-700">

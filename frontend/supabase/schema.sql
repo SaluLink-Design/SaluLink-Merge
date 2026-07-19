@@ -119,149 +119,177 @@ ALTER TABLE case_diagnostic_treatments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE case_ongoing_treatments ENABLE ROW LEVEL SECURITY;
 
 -- Public RLS policies for development / current unauthenticated access model
-CREATE POLICY IF NOT EXISTS "Allow public read access to cases"
+DROP POLICY IF EXISTS "Allow public read access to cases" ON cases;
+CREATE POLICY "Allow public read access to cases"
   ON cases FOR SELECT
   TO anon
   USING (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public insert to cases"
+DROP POLICY IF EXISTS "Allow public insert to cases" ON cases;
+CREATE POLICY "Allow public insert to cases"
   ON cases FOR INSERT
   TO anon
   WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public update to cases"
+DROP POLICY IF EXISTS "Allow public update to cases" ON cases;
+CREATE POLICY "Allow public update to cases"
   ON cases FOR UPDATE
   TO anon
   USING (true)
   WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public delete from cases"
+DROP POLICY IF EXISTS "Allow public delete from cases" ON cases;
+CREATE POLICY "Allow public delete from cases"
   ON cases FOR DELETE
   TO anon
   USING (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public read access to case_conditions"
+DROP POLICY IF EXISTS "Allow public read access to case_conditions" ON case_conditions;
+CREATE POLICY "Allow public read access to case_conditions"
   ON case_conditions FOR SELECT
   TO anon
   USING (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public insert to case_conditions"
+DROP POLICY IF EXISTS "Allow public insert to case_conditions" ON case_conditions;
+CREATE POLICY "Allow public insert to case_conditions"
   ON case_conditions FOR INSERT
   TO anon
   WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public update to case_conditions"
+DROP POLICY IF EXISTS "Allow public update to case_conditions" ON case_conditions;
+CREATE POLICY "Allow public update to case_conditions"
   ON case_conditions FOR UPDATE
   TO anon
   USING (true)
   WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public delete from case_conditions"
+DROP POLICY IF EXISTS "Allow public delete from case_conditions" ON case_conditions;
+CREATE POLICY "Allow public delete from case_conditions"
   ON case_conditions FOR DELETE
   TO anon
   USING (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public read access to case_medications"
+DROP POLICY IF EXISTS "Allow public read access to case_medications" ON case_medications;
+CREATE POLICY "Allow public read access to case_medications"
   ON case_medications FOR SELECT
   TO anon
   USING (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public insert to case_medications"
+DROP POLICY IF EXISTS "Allow public insert to case_medications" ON case_medications;
+CREATE POLICY "Allow public insert to case_medications"
   ON case_medications FOR INSERT
   TO anon
   WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public update to case_medications"
+DROP POLICY IF EXISTS "Allow public update to case_medications" ON case_medications;
+CREATE POLICY "Allow public update to case_medications"
   ON case_medications FOR UPDATE
   TO anon
   USING (true)
   WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public delete from case_medications"
+DROP POLICY IF EXISTS "Allow public delete from case_medications" ON case_medications;
+CREATE POLICY "Allow public delete from case_medications"
   ON case_medications FOR DELETE
   TO anon
   USING (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public read access to case_diagnostics"
+DROP POLICY IF EXISTS "Allow public read access to case_diagnostics" ON case_diagnostics;
+CREATE POLICY "Allow public read access to case_diagnostics"
   ON case_diagnostics FOR SELECT
   TO anon
   USING (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public insert to case_diagnostics"
+DROP POLICY IF EXISTS "Allow public insert to case_diagnostics" ON case_diagnostics;
+CREATE POLICY "Allow public insert to case_diagnostics"
   ON case_diagnostics FOR INSERT
   TO anon
   WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public update to case_diagnostics"
+DROP POLICY IF EXISTS "Allow public update to case_diagnostics" ON case_diagnostics;
+CREATE POLICY "Allow public update to case_diagnostics"
   ON case_diagnostics FOR UPDATE
   TO anon
   USING (true)
   WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public delete from case_diagnostics"
+DROP POLICY IF EXISTS "Allow public delete from case_diagnostics" ON case_diagnostics;
+CREATE POLICY "Allow public delete from case_diagnostics"
   ON case_diagnostics FOR DELETE
   TO anon
   USING (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public read access to case_referrals"
+DROP POLICY IF EXISTS "Allow public read access to case_referrals" ON case_referrals;
+CREATE POLICY "Allow public read access to case_referrals"
   ON case_referrals FOR SELECT
   TO anon
   USING (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public insert to case_referrals"
+DROP POLICY IF EXISTS "Allow public insert to case_referrals" ON case_referrals;
+CREATE POLICY "Allow public insert to case_referrals"
   ON case_referrals FOR INSERT
   TO anon
   WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public update to case_referrals"
+DROP POLICY IF EXISTS "Allow public update to case_referrals" ON case_referrals;
+CREATE POLICY "Allow public update to case_referrals"
   ON case_referrals FOR UPDATE
   TO anon
   USING (true)
   WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public delete from case_referrals"
+DROP POLICY IF EXISTS "Allow public delete from case_referrals" ON case_referrals;
+CREATE POLICY "Allow public delete from case_referrals"
   ON case_referrals FOR DELETE
   TO anon
   USING (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public read access to case_diagnostic_treatments"
+DROP POLICY IF EXISTS "Allow public read access to case_diagnostic_treatments" ON case_diagnostic_treatments;
+CREATE POLICY "Allow public read access to case_diagnostic_treatments"
   ON case_diagnostic_treatments FOR SELECT
   TO anon
   USING (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public insert to case_diagnostic_treatments"
+DROP POLICY IF EXISTS "Allow public insert to case_diagnostic_treatments" ON case_diagnostic_treatments;
+CREATE POLICY "Allow public insert to case_diagnostic_treatments"
   ON case_diagnostic_treatments FOR INSERT
   TO anon
   WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public update to case_diagnostic_treatments"
+DROP POLICY IF EXISTS "Allow public update to case_diagnostic_treatments" ON case_diagnostic_treatments;
+CREATE POLICY "Allow public update to case_diagnostic_treatments"
   ON case_diagnostic_treatments FOR UPDATE
   TO anon
   USING (true)
   WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public delete from case_diagnostic_treatments"
+DROP POLICY IF EXISTS "Allow public delete from case_diagnostic_treatments" ON case_diagnostic_treatments;
+CREATE POLICY "Allow public delete from case_diagnostic_treatments"
   ON case_diagnostic_treatments FOR DELETE
   TO anon
   USING (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public read access to case_ongoing_treatments"
+DROP POLICY IF EXISTS "Allow public read access to case_ongoing_treatments" ON case_ongoing_treatments;
+CREATE POLICY "Allow public read access to case_ongoing_treatments"
   ON case_ongoing_treatments FOR SELECT
   TO anon
   USING (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public insert to case_ongoing_treatments"
+DROP POLICY IF EXISTS "Allow public insert to case_ongoing_treatments" ON case_ongoing_treatments;
+CREATE POLICY "Allow public insert to case_ongoing_treatments"
   ON case_ongoing_treatments FOR INSERT
   TO anon
   WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public update to case_ongoing_treatments"
+DROP POLICY IF EXISTS "Allow public update to case_ongoing_treatments" ON case_ongoing_treatments;
+CREATE POLICY "Allow public update to case_ongoing_treatments"
   ON case_ongoing_treatments FOR UPDATE
   TO anon
   USING (true)
   WITH CHECK (true);
 
-CREATE POLICY IF NOT EXISTS "Allow public delete from case_ongoing_treatments"
+DROP POLICY IF EXISTS "Allow public delete from case_ongoing_treatments" ON case_ongoing_treatments;
+CREATE POLICY "Allow public delete from case_ongoing_treatments"
   ON case_ongoing_treatments FOR DELETE
   TO anon
   USING (true);

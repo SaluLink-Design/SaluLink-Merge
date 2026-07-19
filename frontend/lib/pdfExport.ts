@@ -88,9 +88,6 @@ export class PDFExportService {
     this.addBoldText('   Coverage Decision: ', med.coverageDecision === 'full_cover' ? 'Full cover' : 'Cap-limited', indent);
     this.addBoldText('   Co-pay Risk: ', med.copayRisk ? 'Yes' : 'No', indent);
     this.addText(`   Coverage Note: ${med.coverageNote}`, indent);
-    if (med.cdaCapAmount !== undefined) {
-      this.addBoldText('   CDA Cap: ', `R${med.cdaCapAmount.toFixed(2)}`, indent);
-    }
     if (med.unlistedClinicalRationale) {
       this.addText(`   Clinical Rationale: ${med.unlistedClinicalRationale}`, indent);
     }
@@ -271,8 +268,17 @@ export class PDFExportService {
       this.addSubtitle('Prescribed Medications');
       patientCase.medications.forEach((med, index) => {
         this.addText(`${index + 1}. ${med.medicineNameAndStrength}`, 5);
+        if (med.dosage || med.durationUsed || med.dateFirstDiagnosed) {
+          const section12 = [
+            med.dosage ? `Dosage: ${med.dosage}` : null,
+            med.durationUsed ? `Duration: ${med.durationUsed}` : null,
+            med.dateFirstDiagnosed ? `First diagnosed: ${med.dateFirstDiagnosed}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+          this.addText(section12, 10);
+        }
         this.addText(`   ${med.activeIngredient}`, 10);
-        this.addBoldText('   CDA Amount: ', med.cdaAmount, 10);
         this.addMedicationCoverage(med, 10);
         this.yPosition += 3;
       });
@@ -296,7 +302,6 @@ export class PDFExportService {
           this.addText('New medications added:', 10);
           report.newMedications.forEach((med) => {
             this.addText(`• ${med.medicineNameAndStrength} (${med.activeIngredient})`, 15);
-            this.addBoldText('  CDA Amount: ', med.cdaAmount, 20);
             this.addMedicationCoverage(med, 20);
           });
           if (report.motivationLetter) {
@@ -549,14 +554,36 @@ export class PDFExportService {
     this.yPosition += 5;
     this.addDivider();
 
-    this.addSubtitle('Current Medications');
-    patientCase.medications.forEach((med, index) => {
-      this.addText(`${index + 1}. ${med.medicineNameAndStrength}`, 5);
-      this.addText(`   ${med.activeIngredient}`, 10);
-      this.addBoldText('   CDA Amount: ', med.cdaAmount, 10);
-      this.addMedicationCoverage(med, 10);
-      this.yPosition += 3;
-    });
+    const hasChange = Boolean(newMedications && newMedications.length > 0);
+    const latestReport = patientCase.medicationReports?.slice(-1)[0];
+    const previousMeds = hasChange
+      ? latestReport?.originalMedications?.length
+        ? latestReport.originalMedications
+        : patientCase.medications
+      : patientCase.medications;
+
+    this.addSubtitle(hasChange ? 'Previous Medications' : 'Current Medications');
+
+    if (previousMeds.length === 0 && hasChange) {
+      this.addText('No previous medications on file.', 5);
+    } else {
+      previousMeds.forEach((med, index) => {
+        this.addText(`${index + 1}. ${med.medicineNameAndStrength}`, 5);
+        if (med.dosage || med.durationUsed || med.dateFirstDiagnosed) {
+          const section12 = [
+            med.dosage ? `Dosage: ${med.dosage}` : null,
+            med.durationUsed ? `Duration: ${med.durationUsed}` : null,
+            med.dateFirstDiagnosed ? `First diagnosed: ${med.dateFirstDiagnosed}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+          this.addText(section12, 10);
+        }
+        this.addText(`   ${med.activeIngredient}`, 10);
+        this.addMedicationCoverage(med, 10);
+        this.yPosition += 3;
+      });
+    }
     this.addDivider();
 
     this.addSubtitle('Follow-up Notes');
@@ -568,8 +595,17 @@ export class PDFExportService {
       this.addSubtitle('New Prescribed Medications');
       newMedications.forEach((med, index) => {
         this.addText(`${index + 1}. ${med.medicineNameAndStrength}`, 5);
+        if (med.dosage || med.durationUsed || med.dateFirstDiagnosed) {
+          const section12 = [
+            med.dosage ? `Dosage: ${med.dosage}` : null,
+            med.durationUsed ? `Duration: ${med.durationUsed}` : null,
+            med.dateFirstDiagnosed ? `First diagnosed: ${med.dateFirstDiagnosed}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+          this.addText(section12, 10);
+        }
         this.addText(`   ${med.activeIngredient}`, 10);
-        this.addBoldText('   CDA Amount: ', med.cdaAmount, 10);
         this.addMedicationCoverage(med, 10);
         this.yPosition += 3;
       });
@@ -720,8 +756,17 @@ export class PDFExportService {
       this.addSubtitle('Current Medications');
       patientCase.medications.forEach((med, index) => {
         this.addText(`${index + 1}. ${med.medicineNameAndStrength}`, 5);
+        if (med.dosage || med.durationUsed || med.dateFirstDiagnosed) {
+          const section12 = [
+            med.dosage ? `Dosage: ${med.dosage}` : null,
+            med.durationUsed ? `Duration: ${med.durationUsed}` : null,
+            med.dateFirstDiagnosed ? `First diagnosed: ${med.dateFirstDiagnosed}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+          this.addText(section12, 10);
+        }
         this.addText(`   ${med.activeIngredient}`, 10);
-        this.addBoldText('   CDA Amount: ', med.cdaAmount, 10);
         this.addMedicationCoverage(med, 10);
         this.yPosition += 2;
       });
@@ -745,7 +790,6 @@ export class PDFExportService {
           this.addText('New Medications Added:', 10);
           report.newMedications.forEach((med) => {
             this.addText(`• ${med.medicineNameAndStrength} (${med.activeIngredient})`, 15);
-            this.addBoldText('  CDA Amount: ', med.cdaAmount, 20);
             this.addMedicationCoverage(med, 20);
           });
           if (report.motivationLetter) {

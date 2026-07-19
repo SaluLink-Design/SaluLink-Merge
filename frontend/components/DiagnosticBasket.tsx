@@ -4,8 +4,18 @@ import { useState, useEffect } from 'react';
 import { FileText, Check, ChevronDown, ChevronUp, X } from 'lucide-react';
 import { TreatmentBasketItem, TreatmentItem } from '@/types';
 import { DataService } from '@/lib/dataService';
+import { getTreatmentDocumentationStatus } from '@/lib/diagnosticEvidence';
 import FileUploadWithRename from './FileUploadWithRename';
 
+/**
+ * NOTE: as of the current render logic in app/page.tsx, this component is unreachable —
+ * `unregisteredDiagnostic` is true whenever `isWorkflowAMode` is true (it's defined as
+ * `unregistered || isWorkflowAMode`), so the `isWorkflowAMode ? <DiagnosticBasket> : ...`
+ * branch guarded by `!unregisteredDiagnostic` can never select the true side. Workflow B
+ * (registered CIB) patients use `OngoingManagement` instead, which already has real
+ * Refer/Order/Document gating via `ongoingBasketRules.ts`. Do not build new features on
+ * this component without first fixing that render condition, or confirm intentionally dead.
+ */
 interface DiagnosticBasketProps {
   condition: string;
   treatments: TreatmentItem[];
@@ -70,7 +80,9 @@ const DiagnosticBasket = ({
         </div>
         <div>
           <h2 className="text-2xl font-bold text-slate-900">Diagnostic Basket</h2>
-          <p className="text-sm text-slate-500">Select and document required diagnostic tests</p>
+          <p className="text-sm text-slate-500">
+            Select tests, then add written findings and/or upload lab results, scans, and reports
+          </p>
         </div>
         {treatments.length > 0 && (
           <span className="ml-auto brand-badge-selected inline-flex items-center gap-1">
@@ -92,6 +104,7 @@ const DiagnosticBasket = ({
             const treatmentIndex = getDiagnosticIndex(item);
             const isExpanded =
               expandedDiagnostic === item.diagnosticBasket.description && isSelected;
+            const docStatus = treatment ? getTreatmentDocumentationStatus(treatment) : null;
 
             return (
               <div
@@ -115,6 +128,11 @@ const DiagnosticBasket = ({
                         {isSelected && (
                           <span className="brand-badge-selected inline-flex items-center gap-1">
                             <Check className="w-3 h-3" /> Selected
+                          </span>
+                        )}
+                        {isSelected && docStatus?.documented && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            Documented
                           </span>
                         )}
                       </div>
@@ -168,11 +186,9 @@ const DiagnosticBasket = ({
                     onClick={() => setExpandedDiagnostic(item.diagnosticBasket.description)}
                   >
                     <p className="pt-2.5 text-sm text-gray-500 italic">
-                      {treatment.documentation.notes
-                        ? treatment.documentation.notes.length > 70
-                          ? treatment.documentation.notes.substring(0, 70) + '…'
-                          : treatment.documentation.notes
-                        : 'Tap to add findings & documents'}
+                      {docStatus?.documented
+                        ? docStatus.detailLabel
+                        : 'Add written findings or upload supporting documents'}
                     </p>
                   </button>
                 )}
@@ -259,6 +275,9 @@ const DiagnosticBasket = ({
                         <label className="block text-sm font-medium text-gray-700 mb-2">
                           Upload Documents
                         </label>
+                        <p className="text-xs text-slate-500 mb-2">
+                          Lab PDFs, pathology reports, scans, and images count as documented evidence — with or without written findings above.
+                        </p>
                         <FileUploadWithRename
                           images={treatment.documentation.images}
                           onImagesChange={(images) =>

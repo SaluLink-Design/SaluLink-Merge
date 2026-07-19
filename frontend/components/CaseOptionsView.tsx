@@ -1,16 +1,19 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { ArrowLeft, FileText, ClipboardList, Download, Archive, Send, Stethoscope, Activity, Pill, FileSymlink } from 'lucide-react';
+import Link from 'next/link';
+import { ArrowLeft, FileText, ClipboardList, Download, Archive, Send, Stethoscope, Activity, BadgeCheck, Clock, Pill } from 'lucide-react';
 import { PatientCase, ClaimType, CibRecord } from '@/types';
 import { format } from 'date-fns';
 import {
   claimTypeRecommendation,
   benefitStateLabel,
+  getPatientCibStatusLabel,
   resolveEffectiveBenefitState,
 } from '@/lib/benefitState';
 import BenefitStateBadge from '@/components/BenefitStateBadge';
 import { normalizePatientCase } from '@/lib/normalizePatientCase';
+import { useStore } from '@/lib/store';
 
 interface CaseOptionsViewProps {
   caseData: PatientCase;
@@ -23,51 +26,68 @@ interface CaseOptionsViewProps {
   onSendToPatient?: () => void;
   onSelectClaimType?: (claimType: ClaimType) => void;
   patientCibRecords?: CibRecord[];
+  /** Set when a specialist has completed CIB registration for this case via a referral handoff. */
+  registrationHandoffNotice?: {
+    icdCode: string;
+    diagnosisDate: string | null;
+    completedAt: string;
+  } | null;
+  /** True when this case has been referred to a specialist and CIB registration is pending their action. */
+  hasOutboundReferral?: boolean;
+  /** Read-only medical summary — no workflow or claim-type action buttons. */
+  medicalOnly?: boolean;
 }
 
 const claimTypeLabels: Record<ClaimType, string> = {
   diagnostic: 'Diagnostic Claim',
-  'ongoing-management': 'Ongoing Management',
+  'ongoing-management': 'Patient Follow-Up Visit',
+  'specialist-review': 'Annual / Specialist Review',
   'medication-report': 'Medication Report',
   referral: 'Referral',
 };
 
+/** Phase 1: follow-up visit or diagnostic only for registered patients */
 const doctorClaimTypeOptions: {
   value: ClaimType;
   label: string;
   description: string;
   icon: React.ReactNode;
+  primary?: boolean;
 }[] = [
   {
-    value: 'diagnostic',
-    label: 'Diagnostic Claim',
-    description: 'Full clinical workflow — note, condition, ICD, diagnostics, medication.',
-    icon: <Stethoscope className="w-5 h-5" />,
-  },
-  {
     value: 'ongoing-management',
-    label: 'Ongoing Management',
-    description: 'Monitoring and treatment protocols for an existing condition.',
+    label: 'Patient Follow-Up Visit',
+    description:
+      'GP shared care — renew scripts, document monitoring, or escalate to neurologist for major changes.',
     icon: <Activity className="w-5 h-5" />,
+    primary: true,
   },
   {
     value: 'medication-report',
     label: 'Medication Report',
-    description: 'Follow-up notes and prescriptions for a chronic patient.',
+    description:
+      'Repeat script without a full visit — renew on the approved plan; major changes need escalation.',
     icon: <Pill className="w-5 h-5" />,
   },
   {
-    value: 'referral',
-    label: 'Referral',
-    description: 'Specialist referral letter for this patient.',
-    icon: <FileSymlink className="w-5 h-5" />,
+    value: 'diagnostic',
+    label: 'Diagnostic Claim',
+    description:
+      'New or changed condition — full diagnostic workflow for CIB registration.',
+    icon: <Stethoscope className="w-5 h-5" />,
   },
 ];
 
-const ClaimTypeBadge = ({ label }: { label: string }) => (
-  <span className="authi-badge-pill px-3 py-1">
-    <span>{label}</span>
-  </span>
+const doctorClaimBadgeClass: Record<ClaimType, string> = {
+  diagnostic: 'badge-blue',
+  'ongoing-management': 'badge-green',
+  'specialist-review': 'badge-purple',
+  'medication-report': 'badge-purple',
+  referral: 'badge-orange',
+};
+
+const ClaimTypeBadge = ({ claimType, label }: { claimType: ClaimType; label: string }) => (
+  <span className={doctorClaimBadgeClass[claimType]}>{label}</span>
 );
 
 const SectionCard = ({
@@ -77,8 +97,10 @@ const SectionCard = ({
   title: string;
   children: ReactNode;
 }) => (
-  <div className="authi-section-card">
-    <h2 className="text-xs font-semibold authi-gradient-text uppercase tracking-wide mb-4">{title}</h2>
+  <div className="authi-surface-card p-8 mb-6">
+    <h2 className="text-sm font-bold uppercase tracking-[0.24em] authi-gradient-text mb-5">
+      {title}
+    </h2>
     {children}
   </div>
 );
@@ -94,8 +116,13 @@ const CaseOptionsView = ({
   onSendToPatient,
   onSelectClaimType,
   patientCibRecords = [],
+  registrationHandoffNotice = null,
+  hasOutboundReferral = false,
+  medicalOnly = false,
 }: CaseOptionsViewProps) => {
   const caseRecord = normalizePatientCase(caseData);
+  const allCases = useStore((s) => s.cases);
+  const chronicCases = useStore((s) => s.chronicCases);
   const conditionCib = caseRecord.condition
     ? patientCibRecords.find((r) => r.conditionName === caseRecord.condition) ??
       caseRecord.cibRecords?.find((r) => r.conditionName === caseRecord.condition)
@@ -121,8 +148,11 @@ const CaseOptionsView = ({
   const showPendingConditionCib =
     caseRecord.claimType === 'diagnostic' && conditionCib?.benefitState === 'pending_cib_review';
 
-  const cibEnrollmentLabel =
-    caseRecord.cibEnrollmentStatus === 'registered' ? 'Registered' : 'Not registered';
+  const cibEnrollmentLabel = getPatientCibStatusLabel(
+    allCases,
+    caseRecord.patientId,
+    chronicCases
+  );
 
   const handleStartUnregisteredDiagnostic = () => {
     onSelectClaimType?.('diagnostic');
@@ -177,14 +207,14 @@ const CaseOptionsView = ({
           </button>
           <div className="flex-1">
             <p className="text-xs uppercase tracking-[0.2em] authi-gradient-text font-semibold mb-1">
-              {readOnly ? 'Patient record' : 'Claim detail'}
+              {readOnly ? 'Patient record' : medicalOnly ? 'Medical record' : 'Claim detail'}
             </p>
             <div className="flex flex-wrap items-center gap-3 mb-1">
               <h1 className="text-3xl font-semibold text-slate-900">
-                {readOnly ? 'Patient Record' : 'Claim Detail'}
+                {readOnly ? 'Patient Record' : medicalOnly ? 'Claim Summary' : 'Claim Detail'}
               </h1>
-              {claimTypeLabel ? (
-                <ClaimTypeBadge label={claimTypeLabel} />
+              {claimTypeLabel && caseRecord.claimType ? (
+                <ClaimTypeBadge claimType={caseRecord.claimType} label={claimTypeLabel} />
               ) : (
                 <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold authi-tint border border-[rgba(99,102,241,0.25)] text-slate-500">
                   Awaiting doctor
@@ -196,6 +226,48 @@ const CaseOptionsView = ({
             </p>
           </div>
         </div>
+
+        {hasOutboundReferral && !registrationHandoffNotice && (
+          <div className="rounded-2xl border border-violet-200 bg-violet-50 px-5 py-4 mb-6 flex items-start gap-3">
+            <Clock className="w-5 h-5 text-violet-500 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-violet-900">
+                Awaiting specialist — referral in progress
+              </p>
+              <p className="text-sm text-violet-700 mt-0.5">
+                This case has been referred to a specialist for investigation and CIB registration. No
+                further action is needed from you until the specialist completes their assessment. You
+                will see a confirmation here once they submit.
+              </p>
+              <Link
+                href="/referrals"
+                className="inline-block mt-2 text-xs font-semibold text-violet-700 underline underline-offset-2 hover:text-violet-900 transition-colors"
+              >
+                View outbound referral status →
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {registrationHandoffNotice && (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 mb-6 flex items-start gap-3">
+            <BadgeCheck className="w-5 h-5 text-emerald-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-emerald-800">
+                Specialist completed CIB registration
+                {registrationHandoffNotice.icdCode ? ` — ICD ${registrationHandoffNotice.icdCode}` : ''}
+              </p>
+              <p className="text-sm text-emerald-700 mt-0.5">
+                Confirmed{registrationHandoffNotice.diagnosisDate
+                  ? ` diagnosis date ${format(new Date(registrationHandoffNotice.diagnosisDate), 'MMM dd, yyyy')}`
+                  : ''}{' '}
+                on {format(new Date(registrationHandoffNotice.completedAt), 'MMM dd, yyyy')}. This patient is
+                now marked CIB-registered — your next claim for this condition should typically be an ongoing
+                management follow-up or medication report, not another diagnostic registration.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Patient Info */}
         <SectionCard title="Patient Information">
@@ -237,6 +309,14 @@ const CaseOptionsView = ({
           </SectionCard>
         )}
 
+        {caseRecord.clinicalNote?.trim() && (
+          <SectionCard title="Clinical Note">
+            <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+              {caseRecord.clinicalNote}
+            </p>
+          </SectionCard>
+        )}
+
         {/* Ongoing Treatments */}
         {caseRecord.ongoingTreatments.length > 0 && (
           <SectionCard title={`Ongoing Treatments (${caseRecord.ongoingTreatments.length})`}>
@@ -253,7 +333,7 @@ const CaseOptionsView = ({
 
         {/* Medications */}
         {caseRecord.medications.length > 0 && (
-          <SectionCard title={`Medications (${caseRecord.medications.length})`}>
+          <SectionCard title={`Active Medications (${caseRecord.medications.length})`}>
             <ul className="space-y-2">
               {caseRecord.medications.map((m, i) => (
                 <li key={i} className="text-sm text-slate-800">
@@ -282,14 +362,41 @@ const CaseOptionsView = ({
           <SectionCard title={`Medication Reports (${caseRecord.medicationReports!.length})`}>
             <div className="space-y-3">
               {caseRecord.medicationReports!.map((r, i) => (
-                <div key={r.id ?? i} className="authi-sub-card">
-                  <p className="text-xs font-semibold authi-gradient-text uppercase tracking-wide mb-1">
+                <div key={r.id ?? i} className="authi-sub-card space-y-3">
+                  <p className="text-xs font-semibold authi-gradient-text uppercase tracking-wide">
                     Report {i + 1}
                   </p>
                   {r.followUpNotes && <p className="text-sm text-slate-800">{r.followUpNotes}</p>}
+                  {r.originalMedications.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-slate-500 mb-1">Previous medication(s)</p>
+                      <ul className="space-y-1">
+                        {r.originalMedications.map((m, j) => (
+                          <li key={j} className="text-sm text-slate-700">
+                            {m.medicineNameAndStrength}
+                            {m.activeIngredient ? ` (${m.activeIngredient})` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
                   {r.newMedications.length > 0 && (
-                    <p className="text-xs text-slate-500 mt-1">
-                      +{r.newMedications.length} new medication(s)
+                    <div>
+                      <p className="text-xs font-medium text-emerald-700 mb-1">New medication prescribed</p>
+                      <ul className="space-y-1">
+                        {r.newMedications.map((m, j) => (
+                          <li key={j} className="text-sm text-slate-800">
+                            {m.medicineNameAndStrength}
+                            {m.activeIngredient ? ` (${m.activeIngredient})` : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {r.motivationLetter && (
+                    <p className="text-xs text-slate-600 whitespace-pre-wrap">
+                      <span className="font-medium">Motivation: </span>
+                      {r.motivationLetter}
                     </p>
                   )}
                 </div>
@@ -305,7 +412,7 @@ const CaseOptionsView = ({
         )}
 
         {/* Unregistered new case — diagnostic only */}
-        {isUnregisteredNew && !readOnly && !caseRecord.claimType && (
+        {!medicalOnly && isUnregisteredNew && !readOnly && !caseRecord.claimType && !hasOutboundReferral && (
           <button
             type="button"
             onClick={handleStartUnregisteredDiagnostic}
@@ -317,12 +424,14 @@ const CaseOptionsView = ({
         )}
 
         {/* Doctor claim type selector (registered patients) */}
-        {needsClaimType && onSelectClaimType && (
-          <div className="authi-section-card">
-            <h2 className="text-sm font-semibold authi-gradient-text mb-1">Select Claim Type</h2>
+        {!medicalOnly && needsClaimType && onSelectClaimType && (
+          <div className="authi-surface-card p-8 mb-6">
+            <h2 className="text-sm font-bold uppercase tracking-[0.24em] authi-gradient-text mb-2">
+              Select Claim Type
+            </h2>
             <p className="text-sm text-slate-500 mb-4">
-              Patient is registered on CIB. Choose a diagnostic claim for a new condition, or ongoing
-              management, medication report, or referral.
+              Patient is registered on CIB. Start a follow-up visit for routine chronic care, or a
+              diagnostic claim for a new or changed condition.
             </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {availableClaimTypes.map((opt) => {
@@ -351,13 +460,20 @@ const CaseOptionsView = ({
           </div>
         )}
 
-        {caseRecord.claimType && !claimRec.aligned && benefitState && (
+        {caseRecord.claimType &&
+          !claimRec.aligned &&
+          benefitState &&
+          !readOnly &&
+          !medicalOnly &&
+          !isCompleted &&
+          (isNew || needsClaimType) && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             {claimRec.hint}
           </div>
         )}
 
         {/* Actions */}
+        {!medicalOnly && (
         <div className="space-y-3">
           {readOnly ? (
             <>
@@ -377,23 +493,27 @@ const CaseOptionsView = ({
             </>
           ) : (
             <>
-              {(isNew && !needsClaimType && !isUnregisteredNew) || (isUnregisteredNew && caseRecord.claimType === 'diagnostic') ? (
-                <button
-                  onClick={onStartClinicalNote}
-                  className="authi-btn-primary w-full px-6 py-4 rounded-2xl text-base flex items-center justify-center gap-2"
-                >
-                  <FileText className="w-5 h-5" />
-                  Start Workflow
-                </button>
-              ) : !isCompleted && !needsClaimType ? (
-                <button
-                  onClick={onContinueWorkflow}
-                  className="authi-btn-primary w-full px-6 py-4 rounded-2xl text-base flex items-center justify-center gap-2"
-                >
-                  <ClipboardList className="w-5 h-5" />
-                  Continue Workflow
-                </button>
-              ) : null}
+              {!hasOutboundReferral && (
+                <>
+                  {(isNew && !needsClaimType && !isUnregisteredNew) || (isUnregisteredNew && caseRecord.claimType === 'diagnostic') ? (
+                    <button
+                      onClick={onStartClinicalNote}
+                      className="authi-btn-primary w-full px-6 py-4 rounded-2xl text-base flex items-center justify-center gap-2"
+                    >
+                      <FileText className="w-5 h-5" />
+                      Start Workflow
+                    </button>
+                  ) : !isCompleted && !needsClaimType ? (
+                    <button
+                      onClick={onContinueWorkflow}
+                      className="authi-btn-primary w-full px-6 py-4 rounded-2xl text-base flex items-center justify-center gap-2"
+                    >
+                      <ClipboardList className="w-5 h-5" />
+                      Continue Workflow
+                    </button>
+                  ) : null}
+                </>
+              )}
 
               {canExport && (
                 <>
@@ -405,6 +525,7 @@ const CaseOptionsView = ({
             </>
           )}
         </div>
+        )}
       </div>
     </div>
   );

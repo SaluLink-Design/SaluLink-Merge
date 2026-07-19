@@ -32,9 +32,11 @@ const IcdCodeSelection = ({ condition, selectedIcdCode, onSelect }: IcdCodeSelec
           <FileText className="w-5 h-5" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold text-slate-900">ICD-10 Code Selection</h2>
+          <h2 className="text-2xl font-bold text-slate-900">Confirm ICD-10 code</h2>
           <p className="text-sm text-slate-500">
-            Condition: <span className="font-medium text-violet-600">{condition}</span>
+            Diagnosis: <span className="font-medium text-violet-600">{condition}</span>
+            {' · '}
+            Choose or refine the ICD-10 code for scheme submission
           </p>
         </div>
       </div>
