@@ -34,7 +34,7 @@ import FollowUpClaimSummary from '@/components/FollowUpClaimSummary';
 import FollowUpVisitActions from '@/components/FollowUpVisitActions';
 import FollowUpConditionControl from '@/components/FollowUpConditionControl';
 import FollowUpBasketUtilisation from '@/components/FollowUpBasketUtilisation';
-import MedicationReport from '@/components/MedicationReport';
+import MedicationReport, { MedicationReportFormData } from '@/components/MedicationReport';
 import Referral from '@/components/Referral';
 import FinalClaimSummary from '@/components/FinalClaimSummary';
 import PatientExportModal from '@/components/PatientExportModal';
@@ -192,6 +192,12 @@ export default function Home() {
   const [emailDeliveryConfigured, setEmailDeliveryConfigured] = useState(false);
   const [claimCompletionSource, setClaimCompletionSource] = useState<'cib' | 'final' | 'follow-up'>('final');
   const [pendingFollowUpPayload, setPendingFollowUpPayload] = useState<FollowUpCompletionPayload | null>(null);
+  const [inlineRenewReport, setInlineRenewReport] = useState<MedicationReportFormData | null>(null);
+  useEffect(() => {
+    if (store.medicationMode !== 'renew') {
+      setInlineRenewReport(null);
+    }
+  }, [store.medicationMode]);
   const [patientName, setPatientName] = useState('');
   const [patientId, setPatientId] = useState('');
   const [patientEmail, setPatientEmail] = useState('');
@@ -1497,8 +1503,25 @@ export default function Home() {
         !specialistFlow &&
         !store.medicationMode
       ) {
-        alert('Choose renew script or escalate for treatment change.');
-        return;
+        store.setMedicationMode('renew');
+      }
+      const onlyMedicationRenewFastPath =
+        !specialistFlow &&
+        store.followUpVisitActions.medication &&
+        store.medicationMode === 'renew' &&
+        !store.followUpVisitActions.monitoring &&
+        !store.followUpVisitActions.referral;
+      if (store.currentStep === 2 && onlyMedicationRenewFastPath) {
+        if (!inlineRenewReport?.renewConfirmed) {
+          alert('Confirm renewal of the current medication plan before continuing.');
+          return;
+        }
+        if (store.medications.length === 0) {
+          alert(
+            'No medications on file to renew — check the patient portfolio or escalate to neurologist.'
+          );
+          return;
+        }
       }
       if (store.currentStep === 2) {
         // Specialist treatment-plan decision (continue vs change) is chosen in Complete Actions.
@@ -1525,6 +1548,17 @@ export default function Home() {
           setPendingFollowUpPayload({
             includeMedicationReport: false,
             includeReferral: false,
+          });
+          store.setCurrentStep(CHRONIC_FINAL_STEP);
+          return;
+        }
+        if (onlyMedicationRenewFastPath) {
+          setPendingFollowUpPayload({
+            includeMedicationReport: true,
+            includeReferral: false,
+            medicationReport: inlineRenewReport ?? undefined,
+            medicationMode: store.medicationMode,
+            medicationRenewNotes: store.medicationRenewNotes,
           });
           store.setCurrentStep(CHRONIC_FINAL_STEP);
           return;
@@ -1593,7 +1627,14 @@ export default function Home() {
 
   const handlePreviousStep = () => {
     if (isSharedCareVisitFlow()) {
-      if (store.currentStep === CHRONIC_FINAL_STEP && store.followUpVisitActions.continueOnly) {
+      const skippedCompleteActions =
+        store.followUpVisitActions.continueOnly ||
+        (!isSpecialistReviewFlow() &&
+          store.followUpVisitActions.medication &&
+          store.medicationMode === 'renew' &&
+          !store.followUpVisitActions.monitoring &&
+          !store.followUpVisitActions.referral);
+      if (store.currentStep === CHRONIC_FINAL_STEP && skippedCompleteActions) {
         store.setCurrentStep(2);
         return;
       }
@@ -2761,6 +2802,14 @@ export default function Home() {
     const actions = caseData.followUpVisitActions ?? EMPTY_FOLLOW_UP_VISIT_ACTIONS;
     if (!hasFollowUpVisitActionsSelected(actions)) return 2;
     if (actions.continueOnly) return CHRONIC_FINAL_STEP;
+    // Pure renew (no monitoring/referral) is captured inline in Visit Actions — no Complete Actions step
+    const isPureRenewDraft =
+      actions.medication &&
+      caseData.medicationMode === 'renew' &&
+      !actions.monitoring &&
+      !actions.referral &&
+      caseData.claimType !== 'specialist-review';
+    if (isPureRenewDraft) return 2;
     if (caseData.status !== 'completed') return 3;
     return CHRONIC_FINAL_STEP;
   };
@@ -3734,6 +3783,12 @@ export default function Home() {
           !gemsBlocked &&
           (() => {
           const specialistFlow = currentClaimType === 'specialist-review';
+          const onlyMedicationRenewFastPath =
+            !specialistFlow &&
+            store.followUpVisitActions.medication &&
+            store.medicationMode === 'renew' &&
+            !store.followUpVisitActions.monitoring &&
+            !store.followUpVisitActions.referral;
           const rawFollowUpCondition =
             store.selectedCondition ||
             store.cases.find((c) => c.id === store.currentCaseId)?.condition ||
@@ -3871,6 +3926,13 @@ export default function Home() {
                     onMedicationModeChange={store.setMedicationMode}
                     specialistFlow={specialistFlow}
                     clinicalReviewDeteriorating={store.clinicalReview === 'deteriorating'}
+                    currentMedications={store.medications}
+                    medicationNote={store.medicationNote}
+                    condition={followUpCondition}
+                    selectedPlan={store.selectedPlan}
+                    benefitState={store.activeBenefitState}
+                    initialRenewNotes={store.medicationRenewNotes}
+                    onInlineRenewDataChange={setInlineRenewReport}
                   />
                 )}
 
@@ -4019,7 +4081,7 @@ export default function Home() {
                       ? 'Continue to Condition Control'
                       : store.currentStep === 1
                       ? 'Continue to Visit Actions'
-                      : store.followUpVisitActions.continueOnly
+                      : store.followUpVisitActions.continueOnly || onlyMedicationRenewFastPath
                       ? 'Continue to Visit Summary'
                       : 'Continue to Complete Actions'}
                     <ArrowRight className="w-5 h-5" />

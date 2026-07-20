@@ -11,7 +11,6 @@ import {
   Stethoscope,
   FileText,
   HeartPulse,
-  Pill,
   CheckCircle2,
 } from 'lucide-react';
 import { PatientCase, ClaimType } from '@/types';
@@ -45,16 +44,9 @@ const PHASE1_CASE_ACTIONS: {
     claimType: 'ongoing-management',
     label: 'Patient Follow-Up Visit',
     description:
-      'GP shared care — renew scripts, document monitoring, or escalate to neurologist for major changes.',
+      'GP shared care — medication report, monitoring, or escalate to neurologist for major changes.',
     icon: <Activity className="w-5 h-5 text-indigo-500" />,
     primary: true,
-  },
-  {
-    claimType: 'medication-report',
-    label: 'Medication Report',
-    description:
-      'Repeat script from the current prescribed meds in Patient Records — major changes need escalation.',
-    icon: <Pill className="w-5 h-5 text-violet-500" />,
   },
   {
     claimType: 'diagnostic',

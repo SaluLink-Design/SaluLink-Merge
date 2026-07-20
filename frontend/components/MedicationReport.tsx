@@ -357,7 +357,7 @@ const MedicationReport = ({
   };
 
   const medicationListHeading = (() => {
-    if (isRenewMode) return 'Current medications (renewing)';
+    if (isRenewMode) return isFollowUpFlow ? 'Current medications' : 'Current medications (renewing)';
     if (showAsPrevious) return 'Previous Medication(s)';
     return 'Current Medication(s)';
   })();
@@ -383,8 +383,9 @@ const MedicationReport = ({
 
         {isRenewMode && isFollowUpFlow && (
           <p className="text-sm text-slate-600 mb-4">
-            Current prescribed medications are pulled from Patient Records. Confirm renewal of that
-            regimen here. For a treatment change, go back and choose Escalate for treatment change.
+            Current prescribed medications are pulled from Patient Records. Complete this medication
+            report to confirm the regimen for this visit. For a treatment change, go back and choose
+            Escalate to neurologist.
           </p>
         )}
 

@@ -243,7 +243,7 @@ const FollowUpDocumentation = ({
   })();
 
   const selectedLabels = [
-    showMedicationRenew && 'Script renewed',
+    showMedicationRenew && 'Medication report',
     treatmentPlanLabel,
     showMedicationEscalate && 'Escalate for treatment change',
     showMonitoring && 'Order + document monitoring',
@@ -344,7 +344,7 @@ const FollowUpDocumentation = ({
       {(showMedicationRenew || showMedicationChange) && (
         <div className="card">
           <h3 className="text-sm font-bold uppercase tracking-wide text-violet-800 mb-4">
-            {showMedicationChange ? 'Review & update treatment plan' : 'Repeat / renew script'}
+            {showMedicationChange ? 'Review & update treatment plan' : 'Medication report'}
           </h3>
           <MedicationReport
             embedMode

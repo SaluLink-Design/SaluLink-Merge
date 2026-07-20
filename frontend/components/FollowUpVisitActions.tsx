@@ -1,7 +1,14 @@
 'use client';
 
-import { Activity, CheckCircle2, Pill, Stethoscope } from 'lucide-react';
-import { FollowUpVisitActions as VisitActions, MedicationMode } from '@/types';
+import { Activity, Pill, Stethoscope } from 'lucide-react';
+import {
+  FollowUpVisitActions as VisitActions,
+  MedicationMode,
+  SelectedMedication,
+  BenefitState,
+  MedicationRenewNotes,
+} from '@/types';
+import MedicationReport, { MedicationReportFormData } from './MedicationReport';
 
 interface FollowUpVisitActionsProps {
   value: VisitActions;
@@ -11,6 +18,14 @@ interface FollowUpVisitActionsProps {
   /** Specialist annual review — full medication change allowed */
   specialistFlow?: boolean;
   clinicalReviewDeteriorating?: boolean;
+  /** Needed to render the inline medication report when the GP selects that action */
+  currentMedications?: SelectedMedication[];
+  medicationNote?: string;
+  condition?: string;
+  selectedPlan?: any;
+  benefitState?: BenefitState | null;
+  initialRenewNotes?: MedicationRenewNotes;
+  onInlineRenewDataChange?: (data: MedicationReportFormData) => void;
 }
 
 const workActions: {
@@ -22,9 +37,10 @@ const workActions: {
 }[] = [
   {
     key: 'medication',
-    label: 'Repeat / renew script',
-    description: 'Monthly repeat prescription on the current neurologist-approved plan.',
-    hint: 'Side effects and adherence are captured here — not a regimen change',
+    label: 'Medication report',
+    description:
+      'Document adherence and side effects, then confirm repeat script on the neurologist-approved plan.',
+    hint: 'Same meds on file — not a regimen change',
     icon: <Pill className="w-5 h-5" />,
   },
   {
@@ -45,22 +61,29 @@ const workActions: {
 
 const FollowUpVisitActions = ({
   value,
-  medicationMode,
   onChange,
   onMedicationModeChange,
   specialistFlow = false,
   clinicalReviewDeteriorating = false,
+  currentMedications = [],
+  medicationNote = '',
+  condition = '',
+  selectedPlan,
+  benefitState,
+  initialRenewNotes,
+  onInlineRenewDataChange,
 }: FollowUpVisitActionsProps) => {
   const toggleWork = (key: 'medication' | 'monitoring' | 'referral') => {
     onChange({ [key]: !value[key], continueOnly: false });
+    if (key === 'medication' && !value.medication) {
+      onMedicationModeChange('renew');
+    }
+    if (key === 'medication' && value.medication) {
+      onMedicationModeChange(null);
+    }
   };
 
-  const selectContinueOnly = () => {
-    onChange({ continueOnly: !value.continueOnly });
-    if (!value.continueOnly) onMedicationModeChange(null);
-  };
-
-  const medLabel = specialistFlow ? 'Review & update treatment plan' : 'Repeat / renew script';
+  const medLabel = specialistFlow ? 'Review & update treatment plan' : 'Medication report';
   const actions = specialistFlow
     ? workActions.map((a) =>
         a.key === 'medication'
@@ -89,7 +112,7 @@ const FollowUpVisitActions = ({
         <p className="text-sm text-slate-500 mt-1">
           {specialistFlow
             ? 'Select actions for this specialist review visit.'
-            : 'Select day-to-day GP actions. Major treatment changes go to the neurologist — not a silent formulary swap.'}
+            : 'Select day-to-day GP actions. For plan continuation, complete a medication report — major changes use Escalate to neurologist.'}
         </p>
         {clinicalReviewDeteriorating && !specialistFlow && (
           <p className="text-xs text-amber-700 mt-2 font-medium">
@@ -129,62 +152,28 @@ const FollowUpVisitActions = ({
 
       {value.medication && !value.continueOnly && !specialistFlow && (
         <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50/50 p-4">
-          <p className="text-sm font-semibold text-violet-900 mb-3">Script path this visit</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => onMedicationModeChange('renew')}
-              className={`text-left rounded-lg border px-3 py-2.5 text-sm transition ${
-                medicationMode === 'renew'
-                  ? 'border-violet-400 bg-white ring-2 ring-violet-200 font-medium text-violet-900'
-                  : 'border-violet-200 bg-white/80 text-slate-700 hover:bg-white'
-              }`}
-            >
-              Renew current script
-              <span className="block text-xs font-normal text-slate-500 mt-0.5">
-                Same meds — document side effects if any
-              </span>
-            </button>
-            <button
-              type="button"
-              onClick={() => onMedicationModeChange('escalate_change')}
-              className={`text-left rounded-lg border px-3 py-2.5 text-sm transition ${
-                medicationMode === 'escalate_change'
-                  ? 'border-amber-400 bg-white ring-2 ring-amber-200 font-medium text-amber-900'
-                  : 'border-amber-200 bg-white/80 text-slate-700 hover:bg-white'
-              }`}
-            >
-              Escalate for treatment change
-              <span className="block text-xs font-normal text-slate-500 mt-0.5">
-                Refer to neurologist — no GP formulary swap
-              </span>
-            </button>
+          <p className="text-sm font-semibold text-violet-900 mb-1">Medication report</p>
+          <p className="text-xs text-slate-500 mb-3">
+            Confirm the current medications, adherence, and side effects for this visit.
+          </p>
+          <div className="rounded-xl border border-violet-200 bg-white p-4">
+            <MedicationReport
+              embedMode
+              followUpMode
+              reportMode="renew"
+              currentMedications={currentMedications}
+              medicationNote={medicationNote}
+              condition={condition}
+              selectedPlan={selectedPlan}
+              benefitState={benefitState}
+              initialRenewNotes={initialRenewNotes}
+              onDataChange={onInlineRenewDataChange}
+              onSaveOnly={() => {}}
+              onSavePdfOnly={() => {}}
+              onSaveWithAttachments={() => {}}
+            />
           </div>
         </div>
-      )}
-
-      {!specialistFlow && (
-        <button
-          type="button"
-          onClick={selectContinueOnly}
-          className={`w-full text-left rounded-xl border p-4 transition-all ${
-            value.continueOnly
-              ? 'border-emerald-400 bg-emerald-50 ring-2 ring-emerald-200'
-              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-          }`}
-        >
-          <div
-            className={`inline-flex items-center gap-2 text-sm font-semibold ${
-              value.continueOnly ? 'text-emerald-900' : 'text-slate-900'
-            }`}
-          >
-            <CheckCircle2 className="w-5 h-5" />
-            Continue current plan only
-          </div>
-          <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-            Condition is controlled — no script, monitoring, or escalation this visit.
-          </p>
-        </button>
       )}
     </div>
   );

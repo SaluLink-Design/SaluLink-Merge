@@ -2,7 +2,7 @@
 
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, FileText, ClipboardList, Download, Archive, Send, Stethoscope, Activity, BadgeCheck, Clock, Pill } from 'lucide-react';
+import { ArrowLeft, FileText, ClipboardList, Download, Archive, Send, Stethoscope, Activity, BadgeCheck, Clock } from 'lucide-react';
 import { PatientCase, ClaimType, CibRecord } from '@/types';
 import { format } from 'date-fns';
 import {
@@ -58,16 +58,9 @@ const doctorClaimTypeOptions: {
     value: 'ongoing-management',
     label: 'Patient Follow-Up Visit',
     description:
-      'GP shared care — renew scripts, document monitoring, or escalate to neurologist for major changes.',
+      'GP shared care — medication report, monitoring, or escalate to neurologist for major changes.',
     icon: <Activity className="w-5 h-5" />,
     primary: true,
-  },
-  {
-    value: 'medication-report',
-    label: 'Medication Report',
-    description:
-      'Uses the patient\'s current prescribed medication from Patient Records for script renewal; major changes need escalation.',
-    icon: <Pill className="w-5 h-5" />,
   },
   {
     value: 'diagnostic',

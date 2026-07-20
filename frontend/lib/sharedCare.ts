@@ -53,7 +53,7 @@ export const getSharedCareSummaryLabels = (
     if (medicationMode === 'escalate_change') {
       visitActions.push('Escalated to neurologist for treatment change');
     } else if (medicationMode === 'renew') {
-      visitActions.push('Script renewed');
+      visitActions.push('Medication report');
     } else if (treatmentDecision?.decision === 'adjust') {
       visitActions.push('Dose / instructions adjusted');
     } else if (treatmentDecision?.decision === 'change') {
