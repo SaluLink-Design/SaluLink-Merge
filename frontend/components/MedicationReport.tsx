@@ -2,11 +2,19 @@
 
 import { useState, useEffect } from 'react';
 import { SelectedMedication, BenefitState, MedicationRenewNotes } from '@/types';
-import { FileText, Plus, CheckCircle, Upload, AlertTriangle } from 'lucide-react';
+import { FileText, Plus, CheckCircle, Upload, AlertTriangle, ArrowLeft, SlidersHorizontal } from 'lucide-react';
 import MedicationSelection from './MedicationSelection';
 import FileUploadWithRename from './FileUploadWithRename';
+import CurrentMedicationAdjustPanel from './CurrentMedicationAdjustPanel';
+import {
+  cloneMedications,
+  medicationRegimenChanged,
+} from '@/lib/medicationDoseAdjust';
 
 export type MedicationReportMode = 'renew' | 'change' | 'standalone_renew';
+
+/** Specialist treatment-plan branch after reviewing current meds + side effects */
+export type TreatmentPlanDecision = 'continue' | 'adjust' | 'change';
 
 export interface MedicationReportFormData {
   followUpNotes: string;
@@ -17,6 +25,8 @@ export interface MedicationReportFormData {
   sideEffects?: string;
   adherence?: string;
   mode?: MedicationReportMode;
+  /** Explicit specialist decision: keep current plan vs prescribe new */
+  treatmentPlanDecision?: TreatmentPlanDecision | null;
 }
 
 interface MedicationReportProps {
@@ -27,10 +37,11 @@ interface MedicationReportProps {
   benefitState?: BenefitState | null;
   embedMode?: boolean;
   followUpMode?: boolean;
-  /** renew = GP repeat script; change = specialist or legacy change flow */
+  /** renew = GP repeat script; change = specialist treatment plan update */
   reportMode?: MedicationReportMode;
   initialFollowUpNotes?: string;
   initialRenewNotes?: MedicationRenewNotes;
+  /** @deprecated Prefer explicit treatmentPlanDecision; ignored for specialist change flow */
   openNewMedicationOnMount?: boolean;
   onDataChange?: (data: MedicationReportFormData) => void;
   onSaveOnly: (followUpNotes: string, newMedications?: SelectedMedication[], motivationLetter?: string, documentation?: { notes: string; images: string[] }) => void;
@@ -57,6 +68,7 @@ const MedicationReport = ({
 }: MedicationReportProps) => {
   const isFollowUpFlow = followUpMode || embedMode;
   const isRenewMode = reportMode === 'renew' || reportMode === 'standalone_renew';
+  const isSpecialistChangeMode = reportMode === 'change';
 
   const renderCoverageBadge = (status: SelectedMedication['formularyStatus']) => (
     <span
@@ -72,22 +84,40 @@ const MedicationReport = ({
   const [sideEffects, setSideEffects] = useState(initialRenewNotes?.sideEffects ?? '');
   const [adherence, setAdherence] = useState(initialRenewNotes?.adherence ?? '');
   const [renewConfirmed, setRenewConfirmed] = useState(false);
+  const [treatmentPlanDecision, setTreatmentPlanDecision] = useState<TreatmentPlanDecision | null>(
+    null
+  );
   const [addingNew, setAddingNew] = useState(
-    openNewMedicationOnMount && !isRenewMode && (reportMode === 'change' || !isFollowUpFlow)
+    !isSpecialistChangeMode &&
+      openNewMedicationOnMount &&
+      !isRenewMode &&
+      (reportMode === 'change' || !isFollowUpFlow)
   );
   const [showChangeWarning, setShowChangeWarning] = useState(false);
   const [newMedications, setNewMedications] = useState<SelectedMedication[]>([]);
+  const [adjustedMedications, setAdjustedMedications] = useState<SelectedMedication[]>([]);
   const [motivationLetter, setMotivationLetter] = useState('');
   const [documentationNotes, setDocumentationNotes] = useState('');
   const [documentationImages, setDocumentationImages] = useState<string[]>([]);
+
+  const hasSelectedNewMeds = newMedications.length > 0;
+  const hasAdjustedRegimen =
+    treatmentPlanDecision === 'adjust' &&
+    medicationRegimenChanged(currentMedications, adjustedMedications);
+  // Once change/adjust is in progress (or new meds exist), baseline is previous
+  const showAsPrevious =
+    treatmentPlanDecision === 'change' || hasSelectedNewMeds || hasAdjustedRegimen;
 
   useEffect(() => {
     if (!isFollowUpFlow) setFollowUpNotes(initialFollowUpNotes);
   }, [initialFollowUpNotes, isFollowUpFlow]);
 
+  // Legacy non-specialist change flows only — specialist change never auto-opens picker
   useEffect(() => {
-    if (openNewMedicationOnMount && reportMode === 'change') setAddingNew(true);
-  }, [openNewMedicationOnMount, reportMode]);
+    if (openNewMedicationOnMount && reportMode === 'change' && !isFollowUpFlow) {
+      setAddingNew(true);
+    }
+  }, [openNewMedicationOnMount, reportMode, isFollowUpFlow]);
 
   const handleAddNewMedication = (medication: SelectedMedication) => {
     setNewMedications([...newMedications, medication]);
@@ -95,6 +125,25 @@ const MedicationReport = ({
 
   const handleRemoveNewMedication = (index: number) => {
     setNewMedications(newMedications.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateNewMedicationSection12 = (
+    index: number,
+    fields: Partial<
+      Pick<
+        SelectedMedication,
+        | 'dosage'
+        | 'durationUsed'
+        | 'dateFirstDiagnosed'
+        | 'selectedStrength'
+        | 'medicineNameAndStrength'
+        | 'note'
+      >
+    >
+  ) => {
+    setNewMedications((prev) =>
+      prev.map((med, i) => (i === index ? { ...med, ...fields } : med))
+    );
   };
 
   const buildRenewNotesText = () => {
@@ -125,6 +174,31 @@ const MedicationReport = ({
       };
     }
 
+    if (isSpecialistChangeMode) {
+      const reportNotes = buildRenewNotesText();
+      const continuing = treatmentPlanDecision === 'continue';
+      const adjusting = treatmentPlanDecision === 'adjust';
+      return {
+        mode: reportMode,
+        followUpNotes: reportNotes,
+        sideEffects,
+        adherence,
+        treatmentPlanDecision,
+        renewConfirmed: continuing ? true : undefined,
+        newMedications:
+          treatmentPlanDecision === 'change' && newMedications.length > 0
+            ? newMedications
+            : adjusting && hasAdjustedRegimen
+              ? adjustedMedications
+              : undefined,
+        motivationLetter:
+          treatmentPlanDecision === 'change' || adjusting
+            ? motivationLetter || undefined
+            : undefined,
+        documentation,
+      };
+    }
+
     return {
       mode: reportMode,
       documentation,
@@ -147,13 +221,16 @@ const MedicationReport = ({
     sideEffects,
     adherence,
     renewConfirmed,
+    treatmentPlanDecision,
     newMedications,
+    adjustedMedications,
     motivationLetter,
     documentationNotes,
     documentationImages,
     embedMode,
     isFollowUpFlow,
     isRenewMode,
+    isSpecialistChangeMode,
     reportMode,
     currentMedications,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -181,7 +258,43 @@ const MedicationReport = ({
         return false;
       }
     }
-    return validateUnlistedRationale();
+    if (isSpecialistChangeMode) {
+      if (!treatmentPlanDecision) {
+        alert('Choose whether to continue unchanged, adjust dose, or change medication.');
+        return false;
+      }
+      if (treatmentPlanDecision === 'change') {
+        if (newMedications.length === 0) {
+          alert('Select the updated medication for this specialist review.');
+          return false;
+        }
+        if (!motivationLetter.trim()) {
+          alert('Document clinical motivation for the treatment plan update.');
+          return false;
+        }
+      }
+      if (treatmentPlanDecision === 'adjust') {
+        if (currentMedications.length === 0) {
+          alert('No medications on file to adjust — check Patient Records or change therapy.');
+          return false;
+        }
+        if (!hasAdjustedRegimen) {
+          alert('Update strength, dosage, or instructions — or choose Continue unchanged instead.');
+          return false;
+        }
+        if (!motivationLetter.trim()) {
+          alert('Briefly document the clinical reason for the dose adjustment.');
+          return false;
+        }
+      }
+    }
+    return validateUnlistedRationale(
+      isSpecialistChangeMode && treatmentPlanDecision === 'continue'
+        ? currentMedications
+        : isSpecialistChangeMode && treatmentPlanDecision === 'adjust'
+          ? adjustedMedications
+          : undefined
+    );
   };
 
   const handleSaveOnly = () => {
@@ -213,6 +326,42 @@ const MedicationReport = ({
     setAddingNew(true);
   };
 
+  const handleChooseContinue = () => {
+    setTreatmentPlanDecision('continue');
+    setAddingNew(false);
+    setNewMedications([]);
+    setAdjustedMedications([]);
+    setMotivationLetter('');
+  };
+
+  const handleChooseAdjust = () => {
+    setTreatmentPlanDecision('adjust');
+    setAddingNew(false);
+    setNewMedications([]);
+    setAdjustedMedications(cloneMedications(currentMedications));
+    setMotivationLetter('');
+  };
+
+  const handleChooseChange = () => {
+    setTreatmentPlanDecision('change');
+    setAddingNew(true);
+    setAdjustedMedications([]);
+  };
+
+  const handleBackToDecision = () => {
+    setTreatmentPlanDecision(null);
+    setAddingNew(false);
+    setNewMedications([]);
+    setAdjustedMedications([]);
+    setMotivationLetter('');
+  };
+
+  const medicationListHeading = (() => {
+    if (isRenewMode) return 'Current medications (renewing)';
+    if (showAsPrevious) return 'Previous Medication(s)';
+    return 'Current Medication(s)';
+  })();
+
   return (
     <div className="space-y-6">
       <div className={isFollowUpFlow ? '' : 'card'}>
@@ -225,7 +374,7 @@ const MedicationReport = ({
               <h2 className="text-2xl font-bold text-slate-900">Medication Report</h2>
               <p className="text-sm text-slate-500">
                 {isRenewMode
-                  ? 'Repeat script on the current treatment plan'
+                  ? 'Repeat script from the current prescribed medication on the patient record'
                   : 'Review and update medication status'}
               </p>
             </div>
@@ -234,8 +383,15 @@ const MedicationReport = ({
 
         {isRenewMode && isFollowUpFlow && (
           <p className="text-sm text-slate-600 mb-4">
-            Confirm renewal of the neurologist-approved regimen. Document side effects or adherence
-            issues here — for a treatment change, go back and choose Escalate for treatment change.
+            Current prescribed medications are pulled from Patient Records. Confirm renewal of that
+            regimen here. For a treatment change, go back and choose Escalate for treatment change.
+          </p>
+        )}
+
+        {isSpecialistChangeMode && isFollowUpFlow && (
+          <p className="text-sm text-slate-600 mb-4">
+            Review the current prescribed medications, document side effects and adherence reported
+            by the patient, then continue unchanged, adjust dose/strength, or change therapy.
           </p>
         )}
 
@@ -260,26 +416,38 @@ const MedicationReport = ({
           </div>
         )}
 
+        {!(isSpecialistChangeMode && treatmentPlanDecision === 'adjust') && (
         <div className="mb-6">
-          <h3 className="font-semibold text-lg text-slate-900 mb-3">
-            {isRenewMode ? 'Current medications (renewing)' : isFollowUpFlow || addingNew ? 'Previous Medication(s)' : 'Current Medications'}
-          </h3>
+          <h3 className="font-semibold text-lg text-slate-900 mb-3">{medicationListHeading}</h3>
           <div className="space-y-2">
-            {currentMedications.length === 0 ? (
-              <p className="text-sm text-slate-500">No current medications on file.</p>
-            ) : (
-              currentMedications.map((med, index) => (
-                <div
-                  key={index}
-                  className={`p-3 ${isFollowUpFlow || addingNew || isRenewMode ? 'bg-slate-50 border border-slate-200 rounded-xl' : 'brand-card-selected'}`}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-medium text-slate-900">{med.activeIngredient || 'Unknown ingredient'}</p>
-                    {renderCoverageBadge(med.formularyStatus)}
+              {currentMedications.length === 0 ? (
+                <p className="text-sm text-slate-500">
+                  No current prescribed medications found. Open Patient Records to confirm and save the
+                  medication list first.
+                </p>
+              ) : (
+                currentMedications.map((med, index) => (
+                  <div
+                    key={index}
+                    className={`p-3 ${
+                      isFollowUpFlow || showAsPrevious || isRenewMode
+                        ? 'bg-slate-50 border border-slate-200 rounded-xl'
+                        : 'brand-card-selected'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium text-slate-900">{med.activeIngredient || 'Unknown ingredient'}</p>
+                      {renderCoverageBadge(med.formularyStatus)}
+                    </div>
+                    <p className="text-sm text-slate-500">Brand: {med.medicineNameAndStrength}</p>
+                    {med.selectedStrength && (
+                      <p className="text-xs text-slate-500">Strength: {med.selectedStrength}</p>
+                    )}
+                    {med.dosage && (
+                      <p className="text-xs text-slate-500">Dosage: {med.dosage}</p>
+                    )}
+                    <p className="text-xs text-slate-500 mt-0.5">Class: {med.medicineClass}</p>
                   </div>
-                  <p className="text-sm text-slate-500">Brand: {med.medicineNameAndStrength}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">Class: {med.medicineClass}</p>
-                </div>
               ))
             )}
           </div>
@@ -291,6 +459,7 @@ const MedicationReport = ({
             </div>
           )}
         </div>
+        )}
 
         {isRenewMode ? (
           <div className="space-y-4">
@@ -338,6 +507,181 @@ const MedicationReport = ({
               </span>
             </label>
           </div>
+        ) : isSpecialistChangeMode ? (
+          <div className="space-y-4">
+            <div>
+              <label className="label">Medication adherence</label>
+              <textarea
+                className="textarea-field"
+                rows={2}
+                placeholder="Is the patient taking medication as prescribed? Any missed doses or barriers?"
+                value={adherence}
+                onChange={(e) => setAdherence(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="label">Side effects / tolerability</label>
+              <textarea
+                className="textarea-field"
+                rows={2}
+                placeholder="Any adverse effects, tolerability issues, or new symptoms reported by the patient?"
+                value={sideEffects}
+                onChange={(e) => setSideEffects(e.target.value)}
+              />
+            </div>
+
+            {!treatmentPlanDecision && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                <p className="text-sm font-semibold text-slate-900">Treatment plan decision</p>
+                <p className="text-xs text-slate-500">
+                  After reviewing side effects, choose whether this visit continues unchanged, adjusts
+                  dose/strength, or switches therapy.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    onClick={handleChooseContinue}
+                    className="btn-secondary flex-1 flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Continue unchanged
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleChooseAdjust}
+                    className="btn-secondary flex-1 flex items-center justify-center gap-2"
+                  >
+                    <SlidersHorizontal className="w-4 h-4" />
+                    Adjust dose
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleChooseChange}
+                    className="btn-primary flex-1 flex items-center justify-center gap-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Change medication
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {treatmentPlanDecision === 'continue' && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-900">Continuing unchanged</p>
+                    <p className="text-xs text-emerald-800/90 mt-1">
+                      Same drug, strength, and instructions. Side effects and adherence will be saved
+                      with the visit summary.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleBackToDecision}
+                    className="text-xs font-semibold text-emerald-900 underline shrink-0"
+                  >
+                    Change decision
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {treatmentPlanDecision === 'adjust' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="font-semibold text-lg text-slate-900">Adjust dose / instructions</h3>
+                  <button
+                    type="button"
+                    onClick={handleBackToDecision}
+                    className="text-xs font-semibold text-slate-600 underline flex items-center gap-1"
+                  >
+                    <ArrowLeft className="w-3 h-3" />
+                    Change decision
+                  </button>
+                </div>
+                {showAsPrevious && currentMedications.length > 0 && (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Previous regimen
+                    </p>
+                    {currentMedications.map((med, index) => (
+                      <p key={index} className="text-sm text-slate-700">
+                        {med.medicineNameAndStrength}
+                        {med.dosage ? ` · ${med.dosage}` : ''}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                <CurrentMedicationAdjustPanel
+                  condition={condition}
+                  medications={adjustedMedications}
+                  onChange={setAdjustedMedications}
+                />
+                <div>
+                  <label className="label">Clinical rationale for dose adjustment</label>
+                  <textarea
+                    className="textarea-field"
+                    rows={3}
+                    placeholder="Why are you adjusting dose or instructions? e.g. breakthrough symptoms, tolerability…"
+                    value={motivationLetter}
+                    onChange={(e) => setMotivationLetter(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {treatmentPlanDecision === 'change' && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <h3 className="font-semibold text-lg text-slate-900">New Medication Prescribed</h3>
+                    {currentMedications.length > 0 && (
+                      <p className="text-xs text-slate-500 mt-1">
+                        Replacing previous regimen
+                        {hasSelectedNewMeds
+                          ? ` with ${newMedications.length} new medicine${
+                              newMedications.length === 1 ? '' : 's'
+                            }`
+                          : ' — select strength and dosage below'}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleBackToDecision}
+                    className="text-xs font-semibold text-slate-600 underline flex items-center gap-1"
+                  >
+                    <ArrowLeft className="w-3 h-3" />
+                    Change decision
+                  </button>
+                </div>
+                <MedicationSelection
+                  condition={condition}
+                  selectedPlan={selectedPlan}
+                  benefitState={benefitState}
+                  medications={newMedications}
+                  onAddMedication={handleAddNewMedication}
+                  onRemoveMedication={handleRemoveNewMedication}
+                  onSetPlan={() => {}}
+                  excludedMedications={currentMedications}
+                  showSection12Fields
+                  showPatientInstructions
+                  onUpdateSection12={handleUpdateNewMedicationSection12}
+                />
+                <div>
+                  <label className="label">Clinical motivation for medication change</label>
+                  <textarea
+                    className="textarea-field"
+                    rows={4}
+                    placeholder="Why are you changing medication? Include clinical reasoning for the scheme…"
+                    value={motivationLetter}
+                    onChange={(e) => setMotivationLetter(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         ) : (
           <>
             {!isFollowUpFlow && (
@@ -375,7 +719,7 @@ const MedicationReport = ({
               </>
             )}
 
-            {isFollowUpFlow || addingNew ? (
+            {addingNew ? (
               <div className="space-y-4">
                 <h3 className="font-semibold text-lg text-slate-900">New Medication Prescribed</h3>
                 <MedicationSelection
@@ -387,6 +731,9 @@ const MedicationReport = ({
                   onRemoveMedication={handleRemoveNewMedication}
                   onSetPlan={() => {}}
                   excludedMedications={currentMedications}
+                  showSection12Fields
+                  showPatientInstructions
+                  onUpdateSection12={handleUpdateNewMedicationSection12}
                 />
                 <div>
                   <label className="label">Clinical motivation for medication change</label>

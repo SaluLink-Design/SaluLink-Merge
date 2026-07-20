@@ -65,7 +65,26 @@ export function allOrdersResultsReceived(orders: InvestigationOrder[]): boolean 
   return orders.every((o) => o.status === 'results_received');
 }
 
-export function mockResultsPayload(): { rawFindings: string; resultsFiles: string[] } {
+export function mockResultsPayload(
+  order?: Pick<InvestigationOrder, 'treatmentCode' | 'label' | 'assigneeRole'>
+): {
+  rawFindings: string;
+  resultsFiles: string[];
+} {
+  const code = normalizeTreatmentCode(order?.treatmentCode);
+  const isDrugLevel =
+    code === '4081' ||
+    order?.assigneeRole === 'pathologist' ||
+    (order?.label ?? '').toLowerCase().includes('drug level');
+
+  if (isDrugLevel) {
+    return {
+      rawFindings:
+        'Therapeutic drug level (pathology): Carbamazepine 8.4 µg/mL (reference 4–12). Sample received and assayed by laboratory. Formal lab report attached.',
+      resultsFiles: ['mock-drug-level-report.pdf'],
+    };
+  }
+
   return {
     rawFindings:
       'EEG: Generalised spike-and-wave discharges at 3 Hz. Findings consistent with epileptiform activity. Full report attached.',
@@ -100,7 +119,7 @@ export function canOrderInvestigation(practitionerRole: PractitionerRole): boole
 }
 
 export function applyMockResultsToOrder(order: InvestigationOrder): InvestigationOrder {
-  const payload = mockResultsPayload();
+  const payload = mockResultsPayload(order);
   return {
     ...order,
     status: 'results_received' as InvestigationOrderStatus,
@@ -110,8 +129,10 @@ export function applyMockResultsToOrder(order: InvestigationOrder): Investigatio
   };
 }
 
-export function normalizeTreatmentCode(code: string): string {
-  return code.trim().split(/\s+/)[0] ?? code.trim();
+export function normalizeTreatmentCode(code: string | null | undefined): string {
+  if (!code) return '';
+  const trimmed = code.trim();
+  return trimmed.split(/\s+/)[0] ?? trimmed;
 }
 
 export function inferAssigneeRoleFromProviders(providers: string[], code: string): InvestigationAssigneeRole {

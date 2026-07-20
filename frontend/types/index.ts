@@ -179,7 +179,7 @@ export interface ProgressReview {
   patientReportedConcerns: string;
 }
 
-export type TreatmentDecisionType = 'continue' | 'change' | 'refer';
+export type TreatmentDecisionType = 'continue' | 'adjust' | 'change' | 'refer';
 
 /** Doctor-confirmed clinical review at a chronic follow-up visit */
 export type ClinicalReviewStatus = 'improving' | 'stable' | 'deteriorating';

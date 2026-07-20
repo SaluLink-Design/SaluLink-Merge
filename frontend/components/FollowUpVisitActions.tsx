@@ -60,15 +60,16 @@ const FollowUpVisitActions = ({
     if (!value.continueOnly) onMedicationModeChange(null);
   };
 
-  const medLabel = specialistFlow ? 'Update treatment plan' : 'Repeat / renew script';
+  const medLabel = specialistFlow ? 'Review & update treatment plan' : 'Repeat / renew script';
   const actions = specialistFlow
     ? workActions.map((a) =>
         a.key === 'medication'
           ? {
               ...a,
               label: medLabel,
-              description: 'Adjust dose, switch therapy, or update the scheme treatment plan.',
-              hint: 'Specialist anchor — full formulary change allowed',
+              description:
+                'Review current meds and side effects, then continue unchanged, adjust dose, or change therapy.',
+              hint: 'Specialist anchor — dose adjustment and formulary change allowed',
             }
           : a.key === 'monitoring'
             ? {
@@ -162,27 +163,29 @@ const FollowUpVisitActions = ({
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={selectContinueOnly}
-        className={`w-full text-left rounded-xl border p-4 transition-all ${
-          value.continueOnly
-            ? 'border-emerald-400 bg-emerald-50 ring-2 ring-emerald-200'
-            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-        }`}
-      >
-        <div
-          className={`inline-flex items-center gap-2 text-sm font-semibold ${
-            value.continueOnly ? 'text-emerald-900' : 'text-slate-900'
+      {!specialistFlow && (
+        <button
+          type="button"
+          onClick={selectContinueOnly}
+          className={`w-full text-left rounded-xl border p-4 transition-all ${
+            value.continueOnly
+              ? 'border-emerald-400 bg-emerald-50 ring-2 ring-emerald-200'
+              : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
           }`}
         >
-          <CheckCircle2 className="w-5 h-5" />
-          Continue current plan only
-        </div>
-        <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-          Condition is controlled — no script, monitoring, or escalation this visit.
-        </p>
-      </button>
+          <div
+            className={`inline-flex items-center gap-2 text-sm font-semibold ${
+              value.continueOnly ? 'text-emerald-900' : 'text-slate-900'
+            }`}
+          >
+            <CheckCircle2 className="w-5 h-5" />
+            Continue current plan only
+          </div>
+          <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+            Condition is controlled — no script, monitoring, or escalation this visit.
+          </p>
+        </button>
+      )}
     </div>
   );
 };

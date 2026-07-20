@@ -60,21 +60,21 @@
       "category": "monitoring_tests",
       "coordinationType": "order",
       "assignedTo": ["Pathology Laboratory"],
-      "clinicalHint": "Order via pathology. Document the result and clinical interpretation here once available.",
+      "clinicalHint": "Therapeutic drug monitoring: order a blood drug level via pathology. Sample is drawn in clinic or at the lab — the laboratory assays the sample. When the report returns, record the level and clinical interpretation here (attach the lab PDF if available).",
       "roleHints": {
         "gp": {
-          "label": "Order lab",
-          "hint": "Order via pathology. Document the result once available.",
+          "label": "Order drug level",
+          "hint": "Order therapeutic drug level via pathology. You do not assay the sample — document the returned lab result and decide on dose.",
           "primaryCta": "order"
         },
         "neurologist": {
-          "label": "Order lab",
-          "hint": "Order drug level via pathology. Document result and interpretation once available.",
+          "label": "Order drug level",
+          "hint": "Order therapeutic drug level via pathology. Document returned result and use it for dose adjustment.",
           "primaryCta": "order"
         },
         "specialist": {
-          "label": "Order lab",
-          "hint": "Order via pathology. Document the result once available.",
+          "label": "Order drug level",
+          "hint": "Order therapeutic drug level via pathology. Document returned result and use it for dose adjustment.",
           "primaryCta": "order"
         }
       }

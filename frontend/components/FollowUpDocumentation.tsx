@@ -153,7 +153,8 @@ const FollowUpDocumentation = ({
       showMedicationRenew || showMedicationChange ? medReportData ?? undefined : undefined,
     referral: getResolvedReferral(),
     medicationMode,
-    medicationRenewNotes: showMedicationRenew ? medicationRenewNotes : undefined,
+    medicationRenewNotes:
+      showMedicationRenew || showMedicationChange ? medicationRenewNotes : undefined,
   });
 
   const validate = (): boolean => {
@@ -174,12 +175,41 @@ const FollowUpDocumentation = ({
       }
     }
     if (showMedicationChange) {
-      if (!medReportData?.motivationLetter?.trim()) {
-        alert('Document clinical motivation for the treatment plan update.');
+      const decision = medReportData?.treatmentPlanDecision;
+      if (!decision) {
+        alert(
+          'Document side effects/adherence, then choose continue unchanged, adjust dose, or change medication.'
+        );
         return false;
       }
-      if (!medReportData.newMedications || medReportData.newMedications.length === 0) {
-        alert('Select the updated medication for this specialist review.');
+      if (decision === 'change') {
+        if (!medReportData?.motivationLetter?.trim()) {
+          alert('Document clinical motivation for the treatment plan update.');
+          return false;
+        }
+        if (!medReportData.newMedications || medReportData.newMedications.length === 0) {
+          alert('Select the updated medication for this specialist review.');
+          return false;
+        }
+      }
+      if (decision === 'adjust') {
+        if (currentMedications.length === 0) {
+          alert('No medications on file to adjust — check Patient Records or change therapy.');
+          return false;
+        }
+        if (!medReportData?.motivationLetter?.trim()) {
+          alert('Briefly document the clinical reason for the dose adjustment.');
+          return false;
+        }
+        if (!medReportData.newMedications || medReportData.newMedications.length === 0) {
+          alert('Update strength, dosage, or instructions before continuing.');
+          return false;
+        }
+      }
+      if (decision === 'continue' && currentMedications.length === 0) {
+        alert(
+          'No medications on file to continue — check Patient Records or prescribe a new regimen.'
+        );
         return false;
       }
     }
@@ -204,9 +234,17 @@ const FollowUpDocumentation = ({
 
   const noopSave = () => {};
 
+  const treatmentPlanLabel = (() => {
+    if (!showMedicationChange) return null;
+    if (medReportData?.treatmentPlanDecision === 'continue') return 'Plan continued unchanged';
+    if (medReportData?.treatmentPlanDecision === 'adjust') return 'Dose / instructions adjusted';
+    if (medReportData?.treatmentPlanDecision === 'change') return 'Treatment plan updated';
+    return 'Review & update treatment plan';
+  })();
+
   const selectedLabels = [
     showMedicationRenew && 'Script renewed',
-    showMedicationChange && 'Treatment plan updated',
+    treatmentPlanLabel,
     showMedicationEscalate && 'Escalate for treatment change',
     showMonitoring && 'Order + document monitoring',
     showReferral && !showMedicationEscalate && 'Escalate to neurologist',
@@ -306,7 +344,7 @@ const FollowUpDocumentation = ({
       {(showMedicationRenew || showMedicationChange) && (
         <div className="card">
           <h3 className="text-sm font-bold uppercase tracking-wide text-violet-800 mb-4">
-            {showMedicationChange ? 'Treatment plan update' : 'Repeat / renew script'}
+            {showMedicationChange ? 'Review & update treatment plan' : 'Repeat / renew script'}
           </h3>
           <MedicationReport
             embedMode
@@ -319,7 +357,6 @@ const FollowUpDocumentation = ({
             benefitState={benefitState}
             initialFollowUpNotes={initialFollowUpNotes}
             initialRenewNotes={medicationRenewNotes}
-            openNewMedicationOnMount={showMedicationChange}
             onDataChange={(data) => {
               setMedReportData(data);
               if (data.sideEffects !== undefined || data.adherence !== undefined) {

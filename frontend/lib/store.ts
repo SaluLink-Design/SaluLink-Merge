@@ -1233,7 +1233,8 @@ export const useStore = create<AppState>()(
             ...existing,
             documentation: {
               notes: updatedOrder.rawFindings ?? existing.documentation.notes,
-              images: updatedOrder.resultsFiles ?? existing.documentation.images,
+              // Keep real attachments only — mock filenames are not uploadable blobs
+              images: existing.documentation.images ?? [],
             },
           };
         } else {
@@ -1246,7 +1247,7 @@ export const useStore = create<AppState>()(
               timesCompleted: 1,
               documentation: {
                 notes: updatedOrder.rawFindings ?? '',
-                images: updatedOrder.resultsFiles ?? [],
+                images: [],
               },
             },
           ];

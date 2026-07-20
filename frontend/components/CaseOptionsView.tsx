@@ -66,7 +66,7 @@ const doctorClaimTypeOptions: {
     value: 'medication-report',
     label: 'Medication Report',
     description:
-      'Repeat script without a full visit — renew on the approved plan; major changes need escalation.',
+      'Uses the patient\'s current prescribed medication from Patient Records for script renewal; major changes need escalation.',
     icon: <Pill className="w-5 h-5" />,
   },
   {

@@ -3,6 +3,7 @@ import type {
   MedicationMode,
   MedicationRenewNotes,
   PatientCase,
+  TreatmentDecision,
 } from '@/types';
 
 /** Suggest neurologist referral specialty from condition name (Epilepsy-first heuristic) */
@@ -40,7 +41,8 @@ export interface SharedCareSummaryLabels {
 
 export const getSharedCareSummaryLabels = (
   actions: FollowUpVisitActions,
-  medicationMode: MedicationMode | null | undefined
+  medicationMode: MedicationMode | null | undefined,
+  treatmentDecision?: TreatmentDecision | null
 ): SharedCareSummaryLabels => {
   const visitActions: string[] = [];
   if (actions.continueOnly) {
@@ -48,11 +50,19 @@ export const getSharedCareSummaryLabels = (
     return { visitActions };
   }
   if (actions.medication) {
-    visitActions.push(
-      medicationMode === 'escalate_change'
-        ? 'Escalated to neurologist for treatment change'
-        : 'Script renewed'
-    );
+    if (medicationMode === 'escalate_change') {
+      visitActions.push('Escalated to neurologist for treatment change');
+    } else if (medicationMode === 'renew') {
+      visitActions.push('Script renewed');
+    } else if (treatmentDecision?.decision === 'adjust') {
+      visitActions.push('Dose / instructions adjusted');
+    } else if (treatmentDecision?.decision === 'change') {
+      visitActions.push('Treatment plan updated');
+    } else if (treatmentDecision?.decision === 'continue') {
+      visitActions.push('Current plan continued');
+    } else {
+      visitActions.push('Treatment plan reviewed');
+    }
   }
   if (actions.monitoring) visitActions.push('Monitoring documented');
   if (actions.referral) visitActions.push('Escalated to neurologist');

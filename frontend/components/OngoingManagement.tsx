@@ -686,7 +686,9 @@ const OngoingManagement = ({
             <div className="mb-2">
               <h2 className="text-xl font-bold text-slate-900">Investigations</h2>
               <p className="text-sm text-slate-600 mt-1">
-                Order a test, receive its result, and complete its report in the same test flow.
+                Order or refer each test, wait for the external provider to return results, then
+                record what came back — you are not performing pathology or EEG assays in this
+                screen.
               </p>
             </div>
             {orderQueue.length > 0 && (
@@ -814,7 +816,9 @@ const OngoingManagement = ({
                                 : ''}
                             </p>
                             <p className="mt-1 text-xs text-amber-700/80">
-                              Results and reporting will open on this same investigation once received.
+                              {normalizeTreatmentCode(item.ongoingManagementBasket.code) === '4081'
+                                ? 'Pathology assays the sample. When the lab report returns, record the drug level and clinical plan on this same item.'
+                                : 'Results and documentation open on this same investigation once the external provider returns them.'}
                             </p>
                             {itemOrder && onMockReceiveResults && (
                               <div className="mt-3">
@@ -872,6 +876,8 @@ const OngoingManagement = ({
                     (itemOrder.coordinationType === 'order' || itemOrder.coordinationType === 'referral');
                   const isEegWorkflow =
                     normalizeTreatmentCode(item.ongoingManagementBasket.code) === '2711';
+                  const isDrugLevel =
+                    normalizeTreatmentCode(item.ongoingManagementBasket.code) === '4081';
                   const canInterpretEeg =
                     practitionerRole === 'neurologist' || practitionerRole === 'specialist';
 
@@ -1113,23 +1119,40 @@ const OngoingManagement = ({
                               <label className="block text-sm font-medium text-slate-700 mb-2">
                                 {isEegWorkflow && canInterpretEeg
                                   ? 'EEG findings and clinical interpretation'
-                                  : wasCoordinatedExternally
-                                    ? 'Result Summary'
-                                    : 'Findings & Results'}
+                                  : isDrugLevel
+                                    ? 'Returned drug level & clinical interpretation'
+                                    : wasCoordinatedExternally
+                                      ? 'Result summary (from external provider)'
+                                      : 'Findings & Results'}
                               </label>
-                              {wasCoordinatedExternally && !(isEegWorkflow && canInterpretEeg) && (
+                              {isDrugLevel && (
                                 <p className="text-xs text-slate-500 mb-2">
-                                  Relaying the result from the {itemOrder?.coordinationType === 'referral' ? 'specialist' : 'lab/technologist'} who performed this test — not a clinical interpretation of your own.
+                                  Pathology assayed the sample. Record the numeric level and what it
+                                  means for dosing — attach the lab PDF if you have it. You are not
+                                  uploading a test you performed.
+                                </p>
+                              )}
+                              {wasCoordinatedExternally &&
+                                !isDrugLevel &&
+                                !(isEegWorkflow && canInterpretEeg) && (
+                                <p className="text-xs text-slate-500 mb-2">
+                                  Relaying the result from the{' '}
+                                  {itemOrder?.coordinationType === 'referral'
+                                    ? 'specialist'
+                                    : 'lab/technologist'}{' '}
+                                  who performed this test — not a clinical interpretation of your own.
                                 </p>
                               )}
                               <textarea
                                 rows={4}
                                 placeholder={
-                                  wasCoordinatedExternally
-                                    ? isEegWorkflow && canInterpretEeg
-                                      ? 'Record the EEG findings, professional interpretation, and clinical conclusion…'
-                                      : 'Summarise the report received (or leave blank if the attached file speaks for itself)…'
-                                    : 'Enter findings, results and clinical notes…'
+                                  isDrugLevel
+                                    ? 'e.g. Carbamazepine 8.4 µg/mL (ref 4–12). Level therapeutic — continue current dose / consider adjust…'
+                                    : wasCoordinatedExternally
+                                      ? isEegWorkflow && canInterpretEeg
+                                        ? 'Record the EEG findings, professional interpretation, and clinical conclusion…'
+                                        : 'Summarise the report received (or leave blank if the attached file speaks for itself)…'
+                                      : 'Enter findings, results and clinical notes…'
                                 }
                                 value={treatment.documentation.notes}
                                 onChange={(e) =>
@@ -1145,9 +1168,9 @@ const OngoingManagement = ({
                             <div>
                               <label className="block text-sm font-medium text-slate-700 mb-2">
                                 {isEegWorkflow
-                                  ? 'Attach EEG recording and report'
-                                  : wasCoordinatedExternally
-                                    ? 'Attach the report'
+                                  ? 'Attach EEG report (from neurodiagnostic unit)'
+                                  : isDrugLevel || wasCoordinatedExternally
+                                    ? 'Attach received lab / provider report (optional)'
                                     : 'Upload Documents'}
                               </label>
                               <FileUploadWithRename

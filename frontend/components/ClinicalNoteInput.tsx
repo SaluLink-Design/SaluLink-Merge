@@ -52,6 +52,14 @@ const ClinicalNoteInput = ({
         onChange={(e) => onChange(e.target.value)}
         disabled={isAnalyzing}
       />
+
+      {isFollowUp && (
+        <p className="mt-2 text-xs text-slate-500">
+          {value.trim()
+            ? `${value.trim().length} character${value.trim().length === 1 ? '' : 's'} entered`
+            : 'A brief visit note is required before continuing.'}
+        </p>
+      )}
       
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mt-6">
         <button

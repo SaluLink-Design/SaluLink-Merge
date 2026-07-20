@@ -829,7 +829,7 @@ export default function Home() {
       store.loadCase(selectedCaseId);
 
       const claimType = currentCaseForView.claimType ?? 'diagnostic';
-      if (claimType === 'ongoing-management') {
+      if (claimType === 'ongoing-management' || claimType === 'specialist-review') {
         store.setCurrentStep(resumeChronicFollowUpStep(currentCaseForView));
       } else if (claimType === 'medication-report') {
         store.setCurrentStep(0);
@@ -1067,6 +1067,12 @@ export default function Home() {
         store.setSelectedPlan(resumable.plan);
         setSelectedCaseId(resumable.id);
         setSelectedProfileId(profileId);
+        if (
+          effectiveClaimType === 'ongoing-management' ||
+          effectiveClaimType === 'specialist-review'
+        ) {
+          store.setCurrentStep(resumeChronicFollowUpStep(resumable));
+        }
         setCurrentView('workflow');
         return;
       }
@@ -1469,9 +1475,12 @@ export default function Home() {
     if (isSharedCareVisitFlow()) {
       const specialistFlow = isSpecialistReviewFlow();
       if (store.currentStep === 0) {
-        if (store.clinicalNote.trim().length < 20) {
-          alert('Enter a clinical note before continuing.');
+        if (!store.clinicalNote.trim()) {
+          alert('Enter a follow-up clinical note before continuing.');
           return;
+        }
+        if (store.currentCaseId) {
+          store.updateCase(store.currentCaseId, { clinicalNote: store.clinicalNote });
         }
       }
       if (store.currentStep === 1 && !store.clinicalReview) {
@@ -1492,9 +1501,11 @@ export default function Home() {
         return;
       }
       if (store.currentStep === 2) {
+        // Specialist treatment-plan decision (continue vs change) is chosen in Complete Actions.
+        // Keep a provisional continue until documentation sets the real decision.
         const derived =
           specialistFlow && store.followUpVisitActions.medication
-            ? { decision: 'change' as const }
+            ? { decision: 'continue' as const }
             : deriveTreatmentDecisionFromVisitActions(
                 store.followUpVisitActions,
                 store.medicationMode
@@ -2243,10 +2254,15 @@ export default function Home() {
   const persistFollowUpCaseFields = () => {
     if (!store.currentCaseId) return;
     const specialistFlow = isSpecialistReviewFlow();
+    const specialistPlanDecision =
+      pendingFollowUpPayload?.medicationReport?.treatmentPlanDecision;
     const derived =
-      store.treatmentDecision ??
+      (specialistFlow &&
+        specialistPlanDecision &&
+        ({ decision: specialistPlanDecision } as const)) ||
+      store.treatmentDecision ||
       (specialistFlow && store.followUpVisitActions.medication
-        ? { decision: 'change' as const }
+        ? { decision: 'continue' as const }
         : deriveTreatmentDecisionFromVisitActions(
             store.followUpVisitActions,
             store.medicationMode
@@ -2272,7 +2288,13 @@ export default function Home() {
     persistFollowUpCaseFields();
 
     if (payload?.includeMedicationReport && payload.medicationReport) {
-      const { newMedications, motivationLetter, documentation, mode } = payload.medicationReport;
+      const {
+        newMedications,
+        motivationLetter,
+        documentation,
+        mode,
+        treatmentPlanDecision,
+      } = payload.medicationReport;
       const renewNotes = buildVisitContextNotes(
         store.clinicalNote,
         store.clinicalReview,
@@ -2281,7 +2303,8 @@ export default function Home() {
       const isRenew =
         payload.medicationMode === 'renew' ||
         mode === 'renew' ||
-        mode === 'standalone_renew';
+        mode === 'standalone_renew' ||
+        treatmentPlanDecision === 'continue';
 
       if (isRenew) {
         persistMedicationReportChanges(
@@ -2312,6 +2335,10 @@ export default function Home() {
 
   const handleFollowUpDocumentationComplete = (payload: FollowUpCompletionPayload) => {
     setPendingFollowUpPayload(payload);
+    const planDecision = payload.medicationReport?.treatmentPlanDecision;
+    if (planDecision === 'continue' || planDecision === 'change' || planDecision === 'adjust') {
+      store.setTreatmentDecision({ decision: planDecision });
+    }
     store.setCurrentStep(CHRONIC_FINAL_STEP);
   };
 
@@ -3733,9 +3760,15 @@ export default function Home() {
             store.medicationRenewNotes
           );
           const derivedDecision =
+            (pendingFollowUpPayload?.medicationReport?.treatmentPlanDecision
+              ? {
+                  decision:
+                    pendingFollowUpPayload.medicationReport.treatmentPlanDecision,
+                }
+              : null) ??
             store.treatmentDecision ??
             (specialistFlow && store.followUpVisitActions.medication
-              ? { decision: 'change' as const }
+              ? { decision: 'continue' as const }
               : deriveTreatmentDecisionFromVisitActions(
                   store.followUpVisitActions,
                   store.medicationMode

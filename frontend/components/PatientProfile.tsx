@@ -17,7 +17,6 @@ import {
 import { PatientCase, ClaimType } from '@/types';
 import { canStartRegisteredPatientActions, getPatientCibRecords, getPatientCibStatusLabel, isWorkflowB } from '@/lib/benefitState';
 import { isRegistrationUnlocked } from '@/lib/careActions';
-import { getLatestMedicationsFromPortfolio } from '@/lib/patientPortfolio';
 import { getLatestSpecialistTreatmentUpdate } from '@/lib/sharedCare';
 import { useAuth } from '@/lib/AuthContext';
 import { format } from 'date-fns';
@@ -54,7 +53,7 @@ const PHASE1_CASE_ACTIONS: {
     claimType: 'medication-report',
     label: 'Medication Report',
     description:
-      'Repeat script without a full visit — renew on the approved plan; major changes need escalation.',
+      'Repeat script from the current prescribed meds in Patient Records — major changes need escalation.',
     icon: <Pill className="w-5 h-5 text-violet-500" />,
   },
   {
@@ -178,11 +177,6 @@ const PatientProfile = ({
       : PHASE1_CASE_ACTIONS
     : PHASE1_CASE_ACTIONS.filter((o) => o.claimType === 'diagnostic');
 
-  const latestPortfolioMeds = useMemo(
-    () => getLatestMedicationsFromPortfolio(cases),
-    [cases]
-  );
-
   const specialistTreatmentUpdate = useMemo(
     () => getLatestSpecialistTreatmentUpdate(allStoreCases, medicalPatientId),
     [allStoreCases, medicalPatientId]
@@ -215,35 +209,6 @@ const PatientProfile = ({
             </p>
           </div>
         </div>
-        {canStartRegisteredActions && latestPortfolioMeds.medications.length > 0 && (
-          <div className="mt-4 rounded-xl border border-violet-100 bg-violet-50/60 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-violet-800 mb-1">
-              Medications from most recent claim
-            </p>
-            <p className="text-xs text-violet-700/70 mb-2">
-              Not an independently maintained medication list — pre-fills follow-up and medication
-              report actions from this patient&apos;s last saved claim.
-            </p>
-            <ul className="text-sm text-slate-700 space-y-1">
-              {latestPortfolioMeds.medications.map((med, index) => (
-                <li
-                  key={`${med.medicineNameAndStrength}-${med.activeIngredient}-${index}`}
-                  className="flex items-baseline gap-2"
-                >
-                  <Pill className="w-3.5 h-3.5 text-violet-500 shrink-0" />
-                  <span>
-                    {med.medicineNameAndStrength}
-                    {med.dosage ? ` — ${med.dosage}` : ''}
-                    {med.durationUsed ? ` (${med.durationUsed})` : ''}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            {latestPortfolioMeds.medicationNote?.trim() && (
-              <p className="text-xs text-slate-500 mt-2 italic">{latestPortfolioMeds.medicationNote}</p>
-            )}
-          </div>
-        )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
           {[
             ['Medical Aid', patient.medicalAidNumber || '—'],

@@ -46,14 +46,16 @@ interface FollowUpClaimSummaryProps {
 
 const decisionLabel: Record<TreatmentDecision['decision'], string> = {
   continue: 'Continue current treatment',
+  adjust: 'Adjust dose / instructions',
   change: 'Change medication',
   refer: 'Refer to specialist',
 };
 
 const visitActionLabels = (
   actions: FollowUpVisitActions,
-  medicationMode?: MedicationMode | null
-): string[] => getSharedCareSummaryLabels(actions, medicationMode).visitActions;
+  medicationMode?: MedicationMode | null,
+  treatmentDecision?: TreatmentDecision | null
+): string[] => getSharedCareSummaryLabels(actions, medicationMode, treatmentDecision).visitActions;
 
 const MedicationSummaryList = ({
   meds,
@@ -107,11 +109,13 @@ const FollowUpClaimSummary = ({
   onBack,
 }: FollowUpClaimSummaryProps) => {
   const progressSummary = formatProgressReviewSummary(progressReview);
-  const actionLabels = visitActionLabels(visitActions, medicationMode);
+  const actionLabels = visitActionLabels(visitActions, medicationMode, treatmentDecision);
   const hasMedicationChange =
     newMedications.length > 0 &&
     medicationMode !== 'renew' &&
+    (treatmentDecision.decision === 'change' || treatmentDecision.decision === 'adjust') &&
     !visitActions.continueOnly;
+  const isDoseAdjustment = treatmentDecision.decision === 'adjust';
   const baselineMeds = previousMedications.length > 0 ? previousMedications : medications;
 
   return (
@@ -266,7 +270,8 @@ const FollowUpClaimSummary = ({
                 <div className="flex items-center gap-2 mb-3">
                   <Pill className="w-5 h-5 text-emerald-600" />
                   <h3 className="font-semibold text-slate-900">
-                    New Medication Prescribed ({newMedications.length})
+                    {isDoseAdjustment ? 'Updated Medication' : 'New Medication Prescribed'}
+                    {newMedications.length > 1 ? 's' : ''} ({newMedications.length})
                   </h3>
                 </div>
                 <MedicationSummaryList meds={newMedications} variant="new" />
