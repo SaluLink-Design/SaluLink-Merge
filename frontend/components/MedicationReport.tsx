@@ -1,11 +1,26 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { SelectedMedication, BenefitState, MedicationRenewNotes } from '@/types';
-import { FileText, Plus, CheckCircle, Upload, AlertTriangle, ArrowLeft, SlidersHorizontal } from 'lucide-react';
+import {
+  SelectedMedication,
+  BenefitState,
+  MedicationRenewNotes,
+  ClinicalReviewStatus,
+} from '@/types';
+import {
+  FileText,
+  Plus,
+  CheckCircle,
+  Upload,
+  AlertTriangle,
+  ArrowLeft,
+  SlidersHorizontal,
+  Stethoscope,
+} from 'lucide-react';
 import MedicationSelection from './MedicationSelection';
 import FileUploadWithRename from './FileUploadWithRename';
 import CurrentMedicationAdjustPanel from './CurrentMedicationAdjustPanel';
+import ClinicalAssessmentCapture from './ClinicalAssessmentCapture';
 import {
   cloneMedications,
   medicationRegimenChanged,
@@ -15,6 +30,9 @@ export type MedicationReportMode = 'renew' | 'change' | 'standalone_renew';
 
 /** Specialist treatment-plan branch after reviewing current meds + side effects */
 export type TreatmentPlanDecision = 'continue' | 'adjust' | 'change';
+
+/** GP follow-up medication report decision — renew script or escalate for change */
+export type GpMedicationDecision = 'renew' | 'refer_change';
 
 export interface MedicationReportFormData {
   followUpNotes: string;
@@ -27,6 +45,10 @@ export interface MedicationReportFormData {
   mode?: MedicationReportMode;
   /** Explicit specialist decision: keep current plan vs prescribe new */
   treatmentPlanDecision?: TreatmentPlanDecision | null;
+  /** GP follow-up: renew current plan or refer for medication change */
+  gpMedicationDecision?: GpMedicationDecision | null;
+  clinicalReview?: ClinicalReviewStatus | null;
+  clinicalReviewBasis?: string;
 }
 
 interface MedicationReportProps {
@@ -39,11 +61,18 @@ interface MedicationReportProps {
   followUpMode?: boolean;
   /** renew = GP repeat script; change = specialist treatment plan update */
   reportMode?: MedicationReportMode;
+  /** When true, show refer-for-change as the locked GP decision */
+  initialGpDecision?: GpMedicationDecision | null;
   initialFollowUpNotes?: string;
   initialRenewNotes?: MedicationRenewNotes;
+  initialClinicalReview?: ClinicalReviewStatus | null;
+  initialClinicalReviewBasis?: string;
+  specialistFlow?: boolean;
   /** @deprecated Prefer explicit treatmentPlanDecision; ignored for specialist change flow */
   openNewMedicationOnMount?: boolean;
   onDataChange?: (data: MedicationReportFormData) => void;
+  /** GP follow-up: renew confirmed, escalate for medication-change referral, or clear decision */
+  onGpDecision?: (decision: GpMedicationDecision | null) => void;
   onSaveOnly: (followUpNotes: string, newMedications?: SelectedMedication[], motivationLetter?: string, documentation?: { notes: string; images: string[] }) => void;
   onSavePdfOnly: (followUpNotes: string, newMedications?: SelectedMedication[], motivationLetter?: string, documentation?: { notes: string; images: string[] }) => void;
   onSaveWithAttachments: (followUpNotes: string, newMedications?: SelectedMedication[], motivationLetter?: string, documentation?: { notes: string; images: string[] }) => void;
@@ -58,10 +87,15 @@ const MedicationReport = ({
   embedMode = false,
   followUpMode = false,
   reportMode = 'standalone_renew',
+  initialGpDecision = null,
   initialFollowUpNotes = '',
   initialRenewNotes,
+  initialClinicalReview = null,
+  initialClinicalReviewBasis = '',
+  specialistFlow = false,
   openNewMedicationOnMount = false,
   onDataChange,
+  onGpDecision,
   onSaveOnly,
   onSavePdfOnly,
   onSaveWithAttachments,
@@ -69,6 +103,9 @@ const MedicationReport = ({
   const isFollowUpFlow = followUpMode || embedMode;
   const isRenewMode = reportMode === 'renew' || reportMode === 'standalone_renew';
   const isSpecialistChangeMode = reportMode === 'change';
+  /** Follow-up renew uses the specialist-style decision shell (renew vs refer). */
+  const isGpFollowUpRenew = isRenewMode && isFollowUpFlow && reportMode === 'renew';
+  const showClinicalAssessment = isGpFollowUpRenew || (isSpecialistChangeMode && isFollowUpFlow);
 
   const renderCoverageBadge = (status: SelectedMedication['formularyStatus']) => (
     <span
@@ -83,7 +120,14 @@ const MedicationReport = ({
   const [followUpNotes, setFollowUpNotes] = useState(initialFollowUpNotes);
   const [sideEffects, setSideEffects] = useState(initialRenewNotes?.sideEffects ?? '');
   const [adherence, setAdherence] = useState(initialRenewNotes?.adherence ?? '');
-  const [renewConfirmed, setRenewConfirmed] = useState(false);
+  const [clinicalReview, setClinicalReview] = useState<ClinicalReviewStatus | null>(
+    initialClinicalReview
+  );
+  const [clinicalReviewBasis, setClinicalReviewBasis] = useState(initialClinicalReviewBasis);
+  const [renewConfirmed, setRenewConfirmed] = useState(initialGpDecision === 'renew');
+  const [gpMedicationDecision, setGpMedicationDecision] = useState<GpMedicationDecision | null>(
+    initialGpDecision
+  );
   const [treatmentPlanDecision, setTreatmentPlanDecision] = useState<TreatmentPlanDecision | null>(
     null
   );
@@ -111,6 +155,22 @@ const MedicationReport = ({
   useEffect(() => {
     if (!isFollowUpFlow) setFollowUpNotes(initialFollowUpNotes);
   }, [initialFollowUpNotes, isFollowUpFlow]);
+
+  useEffect(() => {
+    if (!isGpFollowUpRenew) return;
+    setGpMedicationDecision(initialGpDecision ?? null);
+    setRenewConfirmed(initialGpDecision === 'renew');
+  }, [initialGpDecision, isGpFollowUpRenew]);
+
+  useEffect(() => {
+    if (!showClinicalAssessment) return;
+    if (initialClinicalReview) setClinicalReview(initialClinicalReview);
+  }, [initialClinicalReview, showClinicalAssessment]);
+
+  useEffect(() => {
+    if (!showClinicalAssessment) return;
+    if (initialClinicalReviewBasis) setClinicalReviewBasis(initialClinicalReviewBasis);
+  }, [initialClinicalReviewBasis, showClinicalAssessment]);
 
   // Legacy non-specialist change flows only — specialist change never auto-opens picker
   useEffect(() => {
@@ -170,6 +230,9 @@ const MedicationReport = ({
         sideEffects,
         adherence,
         renewConfirmed,
+        gpMedicationDecision: isGpFollowUpRenew ? gpMedicationDecision : undefined,
+        clinicalReview: showClinicalAssessment ? clinicalReview : undefined,
+        clinicalReviewBasis: showClinicalAssessment ? clinicalReviewBasis : undefined,
         newMedications: currentMedications.length > 0 ? currentMedications : undefined,
       };
     }
@@ -185,6 +248,8 @@ const MedicationReport = ({
         adherence,
         treatmentPlanDecision,
         renewConfirmed: continuing ? true : undefined,
+        clinicalReview: showClinicalAssessment ? clinicalReview : undefined,
+        clinicalReviewBasis: showClinicalAssessment ? clinicalReviewBasis : undefined,
         newMedications:
           treatmentPlanDecision === 'change' && newMedications.length > 0
             ? newMedications
@@ -220,7 +285,10 @@ const MedicationReport = ({
     followUpNotes,
     sideEffects,
     adherence,
+    clinicalReview,
+    clinicalReviewBasis,
     renewConfirmed,
+    gpMedicationDecision,
     treatmentPlanDecision,
     newMedications,
     adjustedMedications,
@@ -231,6 +299,7 @@ const MedicationReport = ({
     isFollowUpFlow,
     isRenewMode,
     isSpecialistChangeMode,
+    isGpFollowUpRenew,
     reportMode,
     currentMedications,
   ]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -247,14 +316,35 @@ const MedicationReport = ({
     return true;
   };
 
+  const requireClinicalAssessment = (): boolean => {
+    if (!showClinicalAssessment) return true;
+    if (!clinicalReview) {
+      alert(
+        'Record a clinical assessment (improving, stable, or deteriorating) from the medication feedback before continuing.'
+      );
+      return false;
+    }
+    return true;
+  };
+
   const validateBeforeSave = (): boolean => {
+    if (showClinicalAssessment && !requireClinicalAssessment()) return false;
     if (isRenewMode) {
-      if (!renewConfirmed) {
+      if (isGpFollowUpRenew) {
+        if (gpMedicationDecision !== 'renew' && !renewConfirmed) {
+          alert('Choose Renew medication or Refer for medication review before saving.');
+          return false;
+        }
+        if (gpMedicationDecision === 'refer_change') {
+          alert('Complete the neurologist referral for this medication change — do not save a renew-only report.');
+          return false;
+        }
+      } else if (!renewConfirmed) {
         alert('Confirm renewal of the current medication plan before saving.');
         return false;
       }
       if (currentMedications.length === 0) {
-        alert('No medications on file to renew — check the patient portfolio or escalate to neurologist.');
+        alert('No medications on file to renew — check the patient portfolio or refer for medication review.');
         return false;
       }
     }
@@ -327,6 +417,7 @@ const MedicationReport = ({
   };
 
   const handleChooseContinue = () => {
+    if (!requireClinicalAssessment()) return;
     setTreatmentPlanDecision('continue');
     setAddingNew(false);
     setNewMedications([]);
@@ -335,6 +426,7 @@ const MedicationReport = ({
   };
 
   const handleChooseAdjust = () => {
+    if (!requireClinicalAssessment()) return;
     setTreatmentPlanDecision('adjust');
     setAddingNew(false);
     setNewMedications([]);
@@ -343,6 +435,7 @@ const MedicationReport = ({
   };
 
   const handleChooseChange = () => {
+    if (!requireClinicalAssessment()) return;
     setTreatmentPlanDecision('change');
     setAddingNew(true);
     setAdjustedMedications([]);
@@ -354,6 +447,32 @@ const MedicationReport = ({
     setNewMedications([]);
     setAdjustedMedications([]);
     setMotivationLetter('');
+  };
+
+  const handleGpRenew = () => {
+    if (!requireClinicalAssessment()) return;
+    if (currentMedications.length === 0) {
+      alert(
+        'No medications on file to renew — check the patient portfolio or refer for medication review.'
+      );
+      return;
+    }
+    setGpMedicationDecision('renew');
+    setRenewConfirmed(true);
+    onGpDecision?.('renew');
+  };
+
+  const handleGpReferChange = () => {
+    if (!requireClinicalAssessment()) return;
+    setGpMedicationDecision('refer_change');
+    setRenewConfirmed(false);
+    onGpDecision?.('refer_change');
+  };
+
+  const handleGpBackToDecision = () => {
+    setGpMedicationDecision(null);
+    setRenewConfirmed(false);
+    onGpDecision?.(null);
   };
 
   const medicationListHeading = (() => {
@@ -381,7 +500,14 @@ const MedicationReport = ({
           </div>
         )}
 
-        {isRenewMode && isFollowUpFlow && (
+        {isGpFollowUpRenew && (
+          <p className="text-sm text-slate-600 mb-4">
+            Review the current prescribed medications, document side effects and adherence reported
+            by the patient, then renew the current plan or refer for a medication change.
+          </p>
+        )}
+
+        {isRenewMode && isFollowUpFlow && !isGpFollowUpRenew && (
           <p className="text-sm text-slate-600 mb-4">
             Current prescribed medications are pulled from Patient Records. Complete this medication
             report to confirm the regimen for this visit. For a treatment change, go back and choose
@@ -403,7 +529,7 @@ const MedicationReport = ({
               <p className="font-semibold text-amber-900">Major changes need neurologist sign-off</p>
               <p className="text-amber-800/90 mt-1 text-xs leading-relaxed">
                 GPs renew scripts on the approved plan. To change drug class or dose, start a Patient
-                Follow-Up Visit and choose Escalate for treatment change — that opens a neurologist
+                Follow-Up Visit and choose Refer for medication review — that opens a neurologist
                 referral instead of swapping formulary here.
               </p>
               <button
@@ -462,7 +588,115 @@ const MedicationReport = ({
         </div>
         )}
 
-        {isRenewMode ? (
+        {isGpFollowUpRenew ? (
+          <div className="space-y-4">
+            <div>
+              <label className="label">Medication adherence</label>
+              <textarea
+                className="textarea-field"
+                rows={2}
+                placeholder="Is the patient taking medication as prescribed? Any missed doses or barriers?"
+                value={adherence}
+                onChange={(e) => setAdherence(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="label">Side effects / tolerability</label>
+              <textarea
+                className="textarea-field"
+                rows={2}
+                placeholder="Any adverse effects, tolerability issues, or new symptoms since last script?"
+                value={sideEffects}
+                onChange={(e) => setSideEffects(e.target.value)}
+              />
+            </div>
+
+            <ClinicalAssessmentCapture
+              value={clinicalReview}
+              onChange={setClinicalReview}
+              basis={clinicalReviewBasis}
+              onBasisChange={setClinicalReviewBasis}
+              specialistFlow={specialistFlow}
+              hint="Based on adherence and side effects from this visit — not a separate assessment step."
+            />
+
+            {!gpMedicationDecision && (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                <p className="text-sm font-semibold text-slate-900">Medication report decision</p>
+                <p className="text-xs text-slate-500">
+                  After reviewing side effects, renew the current chronic plan or refer to a neurologist
+                  when a medication change is needed.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <button
+                    type="button"
+                    onClick={handleGpRenew}
+                    className="btn-secondary flex-1 flex items-center justify-center gap-2"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    Renew medication
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleGpReferChange}
+                    className="btn-primary flex-1 flex items-center justify-center gap-2"
+                  >
+                    <Stethoscope className="w-4 h-4" />
+                    Refer for medication review
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {gpMedicationDecision === 'renew' && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-900">Renewing current medication</p>
+                    <p className="text-xs text-emerald-800/90 mt-1">
+                      Same drug, strength, and instructions. Side effects and adherence will be saved
+                      with the visit summary.
+                    </p>
+                  </div>
+                  {onGpDecision && (
+                    <button
+                      type="button"
+                      onClick={handleGpBackToDecision}
+                      className="text-xs font-semibold text-emerald-900 underline shrink-0"
+                    >
+                      Change decision
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {gpMedicationDecision === 'refer_change' && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900">
+                      Referring for medication change
+                    </p>
+                    <p className="text-xs text-amber-800/90 mt-1">
+                      Your medication report findings will be summarised for the specialist. Continue
+                      to write your referral message — do not change formulary as GP.
+                    </p>
+                  </div>
+                  {onGpDecision && (
+                    <button
+                      type="button"
+                      onClick={handleGpBackToDecision}
+                      className="text-xs font-semibold text-amber-900 underline shrink-0"
+                    >
+                      Change decision
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : isRenewMode ? (
           <div className="space-y-4">
             <div>
               <label className="label">Medication adherence</label>
@@ -530,6 +764,15 @@ const MedicationReport = ({
                 onChange={(e) => setSideEffects(e.target.value)}
               />
             </div>
+
+            <ClinicalAssessmentCapture
+              value={clinicalReview}
+              onChange={setClinicalReview}
+              basis={clinicalReviewBasis}
+              onBasisChange={setClinicalReviewBasis}
+              specialistFlow
+              hint="Based on adherence and side effects from this visit — not a separate assessment step."
+            />
 
             {!treatmentPlanDecision && (
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">

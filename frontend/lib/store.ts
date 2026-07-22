@@ -85,6 +85,8 @@ interface AppState {
   treatmentDecision: TreatmentDecision | null;
   /** Chronic follow-up workflow — clinical review (improving / stable / deteriorating) */
   clinicalReview: ClinicalReviewStatus | null;
+  /** Optional basis note for the clinical assessment */
+  clinicalReviewBasis: string;
   /** Chronic follow-up — skip documenting new basket monitoring this visit */
   monitoringSkipped: boolean;
   monitoringSkipReason: string;
@@ -122,6 +124,7 @@ interface AppState {
   setMedicationRenewNotes: (notes: Partial<MedicationRenewNotes>) => void;
   setTreatmentDecision: (decision: TreatmentDecision | null) => void;
   setClinicalReview: (status: ClinicalReviewStatus | null) => void;
+  setClinicalReviewBasis: (basis: string) => void;
   setMonitoringSkipped: (skipped: boolean, reason?: string) => void;
   /** Recompute medication funding fields after CIB state change */
   reconcileMedicationsForBenefitState: () => void;
@@ -216,6 +219,8 @@ interface AppState {
     }
   ) => void;
   mockReceiveOngoingResults: (caseId: string, orderId: string) => void;
+  /** Undo a pending (not yet returned) ongoing investigation order */
+  cancelOngoingInvestigation: (caseId: string, orderId: string) => void;
   updateCibEvidenceItem: (
     profileId: string,
     condition: string,
@@ -274,6 +279,7 @@ export const useStore = create<AppState>()(
       medicationRenewNotes: { ...EMPTY_MEDICATION_RENEW_NOTES },
       treatmentDecision: null,
       clinicalReview: null,
+      clinicalReviewBasis: '',
       monitoringSkipped: false,
       monitoringSkipReason: '',
       diagnosticTreatments: [],
@@ -327,12 +333,18 @@ export const useStore = create<AppState>()(
             next.medication = false;
             next.monitoring = false;
             next.referral = false;
-          } else if (
-            actions.medication === true ||
-            actions.monitoring === true ||
-            actions.referral === true
-          ) {
+          } else if (actions.medication === true) {
             next.continueOnly = false;
+            next.monitoring = false;
+            next.referral = false;
+          } else if (actions.monitoring === true) {
+            next.continueOnly = false;
+            next.medication = false;
+            next.referral = false;
+          } else if (actions.referral === true) {
+            next.continueOnly = false;
+            next.medication = false;
+            next.monitoring = false;
           }
           const patch: Partial<AppState> = { followUpVisitActions: next };
           if (actions.medication === false) {
@@ -373,6 +385,8 @@ export const useStore = create<AppState>()(
       setTreatmentDecision: (decision) => set({ treatmentDecision: decision }),
 
       setClinicalReview: (status) => set({ clinicalReview: status }),
+
+      setClinicalReviewBasis: (basis) => set({ clinicalReviewBasis: basis }),
 
       setMonitoringSkipped: (skipped, reason = '') =>
         set({
@@ -665,6 +679,7 @@ export const useStore = create<AppState>()(
             },
             treatmentDecision: normalizeTreatmentDecision(selectedCase.treatmentDecision) ?? null,
             clinicalReview: selectedCase.clinicalReview ?? null,
+            clinicalReviewBasis: selectedCase.clinicalReviewBasis ?? '',
             monitoringSkipped: selectedCase.monitoringSkipped ?? false,
             monitoringSkipReason: selectedCase.monitoringSkipReason ?? '',
           });
@@ -725,6 +740,9 @@ export const useStore = create<AppState>()(
         }
         if (normalizedUpdates.clinicalReview !== undefined) {
           workflowSync.clinicalReview = normalizedUpdates.clinicalReview;
+        }
+        if (normalizedUpdates.clinicalReviewBasis !== undefined) {
+          workflowSync.clinicalReviewBasis = normalizedUpdates.clinicalReviewBasis;
         }
         if (normalizedUpdates.monitoringSkipped !== undefined) {
           workflowSync.monitoringSkipped = normalizedUpdates.monitoringSkipped;
@@ -1260,6 +1278,16 @@ export const useStore = create<AppState>()(
         get().updateCase(caseId, { investigationOrders, ongoingTreatments });
       },
 
+      cancelOngoingInvestigation: (caseId, orderId) => {
+        const patientCase = get().cases.find((c) => c.id === caseId);
+        if (!patientCase) return;
+        const order = patientCase.investigationOrders?.find((o) => o.id === orderId);
+        if (!order || order.status !== 'ordered') return;
+        get().updateCase(caseId, {
+          investigationOrders: (patientCase.investigationOrders ?? []).filter((o) => o.id !== orderId),
+        });
+      },
+
       updateCibEvidenceItem: (profileId, condition, code, patch) => {
         const chronicCase = get().getChronicCase(profileId, condition);
         if (!chronicCase) return;
@@ -1378,6 +1406,7 @@ export const useStore = create<AppState>()(
         medicationRenewNotes: { ...EMPTY_MEDICATION_RENEW_NOTES },
         treatmentDecision: null,
         clinicalReview: null,
+        clinicalReviewBasis: '',
         monitoringSkipped: false,
         monitoringSkipReason: '',
         diagnosticTreatments: [],
@@ -1443,6 +1472,7 @@ export function clearPersistedCaseStore() {
     medicationRenewNotes: { ...EMPTY_MEDICATION_RENEW_NOTES },
     treatmentDecision: null,
     clinicalReview: null,
+    clinicalReviewBasis: '',
     monitoringSkipped: false,
     monitoringSkipReason: '',
     diagnosticTreatments: [],

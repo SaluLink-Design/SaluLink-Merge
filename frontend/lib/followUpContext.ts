@@ -50,12 +50,18 @@ export const normalizeFollowUpVisitActions = (
 export const buildVisitContextNotes = (
   clinicalNote: string,
   clinicalReview: ClinicalReviewStatus | null,
-  renewNotes?: MedicationRenewNotes
+  renewNotes?: MedicationRenewNotes,
+  clinicalReviewBasis?: string
 ): string => {
   const lines: string[] = [];
   if (clinicalNote.trim()) lines.push(clinicalNote.trim());
   if (clinicalReview) {
-    lines.push(`Condition control: ${clinicalReview}`);
+    const basis = clinicalReviewBasis?.trim();
+    lines.push(
+      basis
+        ? `Clinical assessment: ${clinicalReview} — ${basis}`
+        : `Clinical assessment: ${clinicalReview}`
+    );
   }
   if (renewNotes) {
     const renewSummary = formatMedicationRenewNotes(renewNotes);
@@ -87,11 +93,12 @@ export const normalizeTreatmentDecision = (
   return { decision: mapped };
 };
 
-/** Merge clinical note and condition control for Authi ongoing assessment */
+/** Merge clinical note and clinical assessment for Authi ongoing assessment */
 export const buildFollowUpAssessmentNote = (
   clinicalNote: string,
   progressReview: ProgressReview,
-  clinicalReview?: ClinicalReviewStatus | null
+  clinicalReview?: ClinicalReviewStatus | null,
+  clinicalReviewBasis?: string
 ): string => {
   const sections: string[] = [];
 
@@ -100,7 +107,12 @@ export const buildFollowUpAssessmentNote = (
   }
 
   if (clinicalReview) {
-    sections.push(`Condition control: ${clinicalReview}`);
+    const basis = clinicalReviewBasis?.trim();
+    sections.push(
+      basis
+        ? `Clinical assessment: ${clinicalReview} — ${basis}`
+        : `Clinical assessment: ${clinicalReview}`
+    );
   }
 
   const progressSummary = formatProgressReviewSummary(progressReview);

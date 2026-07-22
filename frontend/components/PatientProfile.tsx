@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
   Eye,
@@ -20,6 +20,8 @@ import { getLatestSpecialistTreatmentUpdate } from '@/lib/sharedCare';
 import { useAuth } from '@/lib/AuthContext';
 import { format } from 'date-fns';
 import { useStore } from '@/lib/store';
+import { DataService } from '@/lib/dataService';
+import { getSpecialistVisitUsageSummary } from '@/lib/specialistVisitUsage';
 
 interface PatientProfileProps {
   profileId: string;
@@ -44,7 +46,7 @@ const PHASE1_CASE_ACTIONS: {
     claimType: 'ongoing-management',
     label: 'Patient Follow-Up Visit',
     description:
-      'GP shared care — medication report, monitoring, or escalate to neurologist for major changes.',
+      'GP shared care — medication report (renew or refer for change), monitoring, or escalate to neurologist.',
     icon: <Activity className="w-5 h-5 text-indigo-500" />,
     primary: true,
   },
@@ -108,6 +110,10 @@ const PatientProfile = ({
   userRole,
 }: PatientProfileProps) => {
   const [showCaseActions, setShowCaseActions] = useState(false);
+  const [basketReady, setBasketReady] = useState(false);
+  useEffect(() => {
+    void DataService.initialize().then(() => setBasketReady(true));
+  }, []);
   const auth = useAuth();
   const practitionerRole = auth.profile?.practitionerRole ?? 'gp';
   const speciality = (auth.profile?.speciality ?? '').toLowerCase();
@@ -398,6 +404,15 @@ const PatientProfile = ({
             const pathwayUnlocked = isRegistrationUnlocked(chronicCase, cibApproved);
             const icdCode = anchor?.icdCode || conditionCib?.icd10;
             const conditionClaims = claimsForCondition(condition);
+            const specialistVisitUsage =
+              isSpecialist && basketReady && medicalPatientId
+                ? getSpecialistVisitUsageSummary(
+                    DataService.getOngoingBasketForCondition(condition),
+                    medicalPatientId,
+                    condition,
+                    allStoreCases
+                  )
+                : null;
 
             return (
               <div key={condition} className={`${portfolioCardClass} p-6`}>
@@ -453,8 +468,34 @@ const PatientProfile = ({
                       <strong>+ New Case Action</strong> to start{' '}
                       {isSpecialist
                         ? 'an Annual / Specialist Review'
-                        : 'follow-up visits, medication reports, or care pathway activities'}
+                        : 'follow-up visits or care pathway activities'}
                       .
+                    </p>
+                  </div>
+                )}
+
+                {/* Specialist-only: annual visit benefit, informational — never blocks starting a review */}
+                {isSpecialist && specialistVisitUsage?.maxCovered != null && (
+                  <div
+                    className={`mt-3 flex items-start gap-3 rounded-xl border px-4 py-3 ${
+                      specialistVisitUsage.isExhausted
+                        ? 'border-amber-200 bg-amber-50'
+                        : 'border-slate-200 bg-slate-50'
+                    }`}
+                  >
+                    <HeartPulse
+                      className={`w-4 h-4 shrink-0 mt-0.5 ${
+                        specialistVisitUsage.isExhausted ? 'text-amber-600' : 'text-slate-400'
+                      }`}
+                    />
+                    <p className={`text-sm ${specialistVisitUsage.isExhausted ? 'text-amber-900' : 'text-slate-600'}`}>
+                      {specialistVisitUsage.usedHistorical} of {specialistVisitUsage.maxCovered} specialist
+                      visits used this year
+                      {specialistVisitUsage.isExhausted
+                        ? ' — starting a review may be over the covered limit.'
+                        : '.'}
+                      {' '}
+                      <span className="text-slate-400">(Visits tracked in SaluLink)</span>
                     </p>
                   </div>
                 )}

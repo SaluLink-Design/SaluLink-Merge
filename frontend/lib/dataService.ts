@@ -176,6 +176,7 @@ export class DataService {
               covered: row['ONGOING MANAGEMENT BASKET_2'] || '',
             },
             specialists: row[''] || '',
+            specialistVisitsCovered: row['ONGOING MANAGEMENT BASKET_3'] || '',
           };
 
           return item;

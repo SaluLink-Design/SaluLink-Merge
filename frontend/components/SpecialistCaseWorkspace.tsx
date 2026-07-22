@@ -22,6 +22,7 @@ import {
 } from '@/lib/caseService';
 import { fundingSourceLabel } from '@/lib/benefitState';
 import { DataService } from '@/lib/dataService';
+import { splitReferralNotesAndFindings } from '@/lib/medicationReportSummary';
 import IcdCodeSelection from '@/components/IcdCodeSelection';
 import MedicationSelection from '@/components/MedicationSelection';
 
@@ -211,16 +212,45 @@ const SpecialistCaseWorkspace = ({
           </div>
         )}
 
-        {referral.notes && (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-1">
-            <p className="text-xs uppercase tracking-widest text-slate-400 font-semibold">
-              Referral note
-            </p>
-            <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">
-              {referral.notes}
-            </p>
-          </div>
-        )}
+        {(() => {
+          const { referralMessage, medicationFindings } = splitReferralNotesAndFindings(
+            referral.notes ?? ''
+          );
+          return (
+            <>
+              {referralMessage && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-1">
+                  <p className="text-xs uppercase tracking-widest text-slate-400 font-semibold">
+                    Referral message from GP
+                  </p>
+                  <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">
+                    {referralMessage}
+                  </p>
+                </div>
+              )}
+              {medicationFindings && (
+                <div className="rounded-xl border border-violet-200 bg-violet-50/60 px-4 py-3 space-y-1">
+                  <p className="text-xs uppercase tracking-widest text-violet-500 font-semibold">
+                    Medication report findings
+                  </p>
+                  <p className="text-sm text-slate-700 whitespace-pre-wrap leading-relaxed">
+                    {medicationFindings}
+                  </p>
+                </div>
+              )}
+              {!referralMessage && !medicationFindings && referral.notes && (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-1">
+                  <p className="text-xs uppercase tracking-widest text-slate-400 font-semibold">
+                    Referral note
+                  </p>
+                  <p className="text-sm text-slate-600 whitespace-pre-wrap leading-relaxed">
+                    {referral.notes}
+                  </p>
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         {referral.gpMedications.length > 0 && (
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-2">

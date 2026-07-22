@@ -29,7 +29,7 @@ export const buildRenewFollowUpNotes = (
 ): string => {
   const sections: string[] = [];
   if (clinicalNote.trim()) sections.push(clinicalNote.trim());
-  if (clinicalReview) sections.push(`Condition control: ${clinicalReview}`);
+  if (clinicalReview) sections.push(`Clinical assessment: ${clinicalReview}`);
   const renewSummary = formatMedicationRenewNotes(renewNotes);
   if (renewSummary) sections.push(renewSummary);
   return sections.join('\n\n');
@@ -51,7 +51,7 @@ export const getSharedCareSummaryLabels = (
   }
   if (actions.medication) {
     if (medicationMode === 'escalate_change') {
-      visitActions.push('Escalated to neurologist for treatment change');
+      visitActions.push('Referred for medication review');
     } else if (medicationMode === 'renew') {
       visitActions.push('Medication report');
     } else if (treatmentDecision?.decision === 'adjust') {

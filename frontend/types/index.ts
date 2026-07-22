@@ -87,6 +87,8 @@ export interface TreatmentBasketItem {
     covered: string;
   };
   specialists?: string;
+  /** "Number of specialists we cover each year" — raw scheme text, e.g. "3". Parse defensively. */
+  specialistVisitsCovered?: string;
 }
 
 export interface MatchedCondition {
@@ -181,7 +183,7 @@ export interface ProgressReview {
 
 export type TreatmentDecisionType = 'continue' | 'adjust' | 'change' | 'refer';
 
-/** Doctor-confirmed clinical review at a chronic follow-up visit */
+/** Doctor-confirmed clinical review at a chronic follow-up visit (history-based assessment) */
 export type ClinicalReviewStatus = 'improving' | 'stable' | 'deteriorating';
 
 export interface TreatmentDecision {
@@ -192,7 +194,7 @@ export interface TreatmentDecision {
 
 /**
  * GP medication path when Medication action is selected.
- * renew = repeat script; escalate_change = refer to neurologist (no GP formulary swap).
+ * renew = repeat script; escalate_change = refer to neurologist for medication change (no GP formulary swap).
  */
 export type MedicationMode = 'renew' | 'escalate_change';
 
@@ -208,8 +210,8 @@ export const EMPTY_MEDICATION_RENEW_NOTES: MedicationRenewNotes = {
 };
 
 /**
- * Multi-select actions for a GP follow-up visit.
- * `continueOnly` is exclusive with the three work actions.
+ * Visit actions for a follow-up / specialist visit.
+ * Exactly one of medication, monitoring, referral, or continueOnly may be active.
  */
 export interface FollowUpVisitActions {
   medication: boolean;
@@ -263,6 +265,8 @@ export interface PatientCase {
   treatmentDecision?: TreatmentDecision;
   /** Doctor-confirmed condition trajectory after clinical review */
   clinicalReview?: ClinicalReviewStatus;
+  /** Optional one-line basis for the clinical assessment (history / known results) */
+  clinicalReviewBasis?: string;
   /** Doctor chose not to document new basket monitoring this visit */
   monitoringSkipped?: boolean;
   /** Clinical justification when monitoring was skipped */

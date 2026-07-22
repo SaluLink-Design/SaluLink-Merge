@@ -5,6 +5,7 @@ import { Activity, ArrowLeft, CheckCircle } from 'lucide-react';
 import {
   BenefitState,
   ClinicalAppeal,
+  ClinicalReviewStatus,
   FollowUpVisitActions,
   MedicalPlan,
   MedicationMode,
@@ -17,10 +18,16 @@ import {
   InvestigationOrder,
 } from '@/types';
 import MedicationReport, { MedicationReportFormData } from './MedicationReport';
+import MedicationReportSummaryCard from './MedicationReportSummaryCard';
 import Referral, { ReferralFormData } from './Referral';
 import OngoingManagement from './OngoingManagement';
 import { suggestNeurologistSpecialty } from '@/lib/sharedCare';
+import {
+  composeReferralNotesWithFindings,
+  formatMedicationReportFindings,
+} from '@/lib/medicationReportSummary';
 import type { InvestigationReferralInput } from '@/lib/investigationCoordination';
+import type { SpecialistVisitUsageSummary } from '@/lib/specialistVisitUsage';
 
 export interface FollowUpCompletionPayload {
   includeMedicationReport: boolean;
@@ -37,6 +44,10 @@ interface FollowUpDocumentationProps {
   medicationMode: MedicationMode | null;
   medicationRenewNotes: MedicationRenewNotes;
   onMedicationRenewNotesChange: (notes: Partial<MedicationRenewNotes>) => void;
+  onClinicalReviewChange?: (
+    status: ClinicalReviewStatus | null,
+    basis?: string
+  ) => void;
   progressReview: ProgressReview;
   ongoingTreatments: TreatmentItem[];
   currentMedications: SelectedMedication[];
@@ -49,6 +60,7 @@ interface FollowUpDocumentationProps {
   initialFollowUpNotes?: string;
   monitoringSkipped?: boolean;
   specialistFlow?: boolean;
+  specialistVisitUsage?: SpecialistVisitUsageSummary | null;
   onSetMonitoringSkipped?: (skipped: boolean, reason?: string) => void;
   onAddTreatment: (treatment: TreatmentItem) => void;
   onUpdateTreatment: (index: number, treatment: Partial<TreatmentItem>) => void;
@@ -63,6 +75,7 @@ interface FollowUpDocumentationProps {
   onOrderInvestigation?: (code: string, label: string) => void;
   onReferInvestigation?: (code: string, label: string) => void;
   onMockReceiveResults?: (orderId: string) => void;
+  onCancelInvestigation?: (orderId: string) => void;
   onRequestReferralFromBasket?: () => void;
   onConfirmReferral?: (code: string, label: string, referral: InvestigationReferralInput) => void;
   isReferring?: boolean;
@@ -76,6 +89,7 @@ const FollowUpDocumentation = ({
   medicationMode,
   medicationRenewNotes,
   onMedicationRenewNotesChange,
+  onClinicalReviewChange,
   progressReview,
   ongoingTreatments,
   currentMedications,
@@ -88,6 +102,7 @@ const FollowUpDocumentation = ({
   initialFollowUpNotes = '',
   monitoringSkipped = false,
   specialistFlow = false,
+  specialistVisitUsage = null,
   onSetMonitoringSkipped,
   onAddTreatment,
   onUpdateTreatment,
@@ -102,6 +117,7 @@ const FollowUpDocumentation = ({
   onOrderInvestigation,
   onReferInvestigation,
   onMockReceiveResults,
+  onCancelInvestigation,
   onRequestReferralFromBasket,
   onConfirmReferral,
   isReferring = false,
@@ -122,39 +138,59 @@ const FollowUpDocumentation = ({
     condition,
     patientCase.icdCode
   );
-  const escalateNoteSeed =
-    showMedicationEscalate
-      ? `GP requests neurologist review for treatment change.\n\nCondition control: ${patientCase.clinicalReview ?? 'not recorded'}.\n\n${patientCase.clinicalNote?.trim() ?? ''}`.trim()
-      : '';
+
+  const medicationFindings = showMedicationEscalate
+    ? formatMedicationReportFindings({
+        clinicalReview: patientCase.clinicalReview,
+        clinicalReviewBasis: patientCase.clinicalReviewBasis,
+        medicationRenewNotes,
+        medications: currentMedications,
+        clinicalNote: patientCase.clinicalNote,
+        intent: 'refer_change',
+      })
+    : '';
 
   const [medReportData, setMedReportData] = useState<MedicationReportFormData | null>(null);
   const [referralData, setReferralData] = useState<ReferralFormData | null>(null);
-  const [escalateReason, setEscalateReason] = useState('');
 
   const getResolvedReferral = () => {
     if (!showReferral) return undefined;
-    const noteParts = [
-      referralData?.referralNote?.trim() || escalateNoteSeed,
-      showMedicationEscalate && escalateReason.trim()
-        ? `Clinical escalation reason:\n${escalateReason.trim()}`
-        : '',
-    ].filter(Boolean);
+    const gpMessage = referralData?.referralNote?.trim() ?? '';
     return {
       urgency: referralData?.urgency ?? 'routine',
       specialistType: referralData?.specialistType?.trim() || defaultSpecialist,
-      referralNote: noteParts.join('\n\n'),
+      referralNote: showMedicationEscalate
+        ? composeReferralNotesWithFindings(gpMessage, medicationFindings)
+        : gpMessage,
     };
   };
 
   const buildPayload = (): FollowUpCompletionPayload => ({
-    includeMedicationReport: Boolean(showMedicationRenew || showMedicationChange),
+    includeMedicationReport: Boolean(
+      showMedicationRenew || showMedicationChange || showMedicationEscalate
+    ),
     includeReferral: showReferral,
     medicationReport:
-      showMedicationRenew || showMedicationChange ? medReportData ?? undefined : undefined,
+      showMedicationRenew || showMedicationChange
+        ? medReportData ?? undefined
+        : showMedicationEscalate
+          ? {
+              followUpNotes: medicationFindings,
+              sideEffects: medicationRenewNotes.sideEffects,
+              adherence: medicationRenewNotes.adherence,
+              renewConfirmed: false,
+              gpMedicationDecision: 'refer_change',
+              newMedications:
+                currentMedications.length > 0 ? currentMedications : undefined,
+              mode: 'renew',
+            }
+          : undefined,
     referral: getResolvedReferral(),
     medicationMode,
     medicationRenewNotes:
-      showMedicationRenew || showMedicationChange ? medicationRenewNotes : undefined,
+      showMedicationRenew || showMedicationChange || showMedicationEscalate
+        ? medicationRenewNotes
+        : undefined,
   });
 
   const validate = (): boolean => {
@@ -165,12 +201,20 @@ const FollowUpDocumentation = ({
       return false;
     }
     if (showMedicationRenew) {
-      if (!medReportData?.renewConfirmed) {
+      if (!medReportData?.renewConfirmed && medReportData?.gpMedicationDecision !== 'renew') {
         alert('Confirm renewal of the current medication plan.');
         return false;
       }
       if (currentMedications.length === 0) {
-        alert('No medications on file to renew — check the patient portfolio or escalate to neurologist.');
+        alert('No medications on file to renew — check the patient portfolio or refer for medication review.');
+        return false;
+      }
+    }
+    if (showMedicationChange || showMedicationRenew) {
+      if (!(medReportData?.clinicalReview || patientCase.clinicalReview)) {
+        alert(
+          'Record a clinical assessment from the medication feedback before continuing.'
+        );
         return false;
       }
     }
@@ -213,14 +257,20 @@ const FollowUpDocumentation = ({
         return false;
       }
     }
-    if (showMedicationEscalate && !escalateReason.trim()) {
-      alert('Briefly document why treatment change is needed before escalating.');
-      return false;
+    if (showMedicationEscalate) {
+      if (!medicationRenewNotes.adherence.trim() && !medicationRenewNotes.sideEffects.trim()) {
+        alert(
+          'Document adherence and/or side effects on the medication report before referring for a medication change.'
+        );
+        return false;
+      }
     }
     if (showReferral) {
-      const resolved = getResolvedReferral();
-      if (!resolved?.specialistType?.trim() || !resolved.referralNote?.trim()) {
-        alert('Complete the neurologist referral form.');
+      const gpMessage = referralData?.referralNote?.trim() ?? '';
+      const specialistType =
+        referralData?.specialistType?.trim() || defaultSpecialist;
+      if (!specialistType.trim() || !gpMessage) {
+        alert('Type your referral message to the specialist before continuing.');
         return false;
       }
     }
@@ -245,7 +295,7 @@ const FollowUpDocumentation = ({
   const selectedLabels = [
     showMedicationRenew && 'Medication report',
     treatmentPlanLabel,
-    showMedicationEscalate && 'Escalate for treatment change',
+    showMedicationEscalate && 'Refer for medication review',
     showMonitoring && 'Order + document monitoring',
     showReferral && !showMedicationEscalate && 'Escalate to neurologist',
     continueOnly && 'Continue plan only',
@@ -269,8 +319,11 @@ const FollowUpDocumentation = ({
           </p>
           {patientCase.clinicalReview && (
             <p>
-              <span className="font-medium text-slate-700">Condition control:</span>{' '}
+              <span className="font-medium text-slate-700">Clinical assessment:</span>{' '}
               <span className="capitalize">{patientCase.clinicalReview}</span>
+              {patientCase.clinicalReviewBasis?.trim() ? (
+                <span className="text-slate-600"> — {patientCase.clinicalReviewBasis.trim()}</span>
+              ) : null}
             </p>
           )}
         </div>
@@ -315,30 +368,27 @@ const FollowUpDocumentation = ({
           onOrderInvestigation={onOrderInvestigation}
           onReferInvestigation={onReferInvestigation}
           onMockReceiveResults={onMockReceiveResults}
+          onCancelInvestigation={onCancelInvestigation}
           onRequestReferralFromBasket={onRequestReferralFromBasket}
           onConfirmReferral={onConfirmReferral}
           isReferring={isReferring}
+          clinicalReview={patientCase.clinicalReview ?? null}
+          clinicalReviewBasis={patientCase.clinicalReviewBasis ?? ''}
+          onClinicalReviewChange={onClinicalReviewChange}
+          specialistFlow={specialistFlow}
         />
       )}
 
       {showMedicationEscalate && (
-        <div className="card">
-          <h3 className="text-sm font-bold uppercase tracking-wide text-amber-800 mb-3">
-            Escalate for treatment change
-          </h3>
-          <p className="text-sm text-slate-600 mb-4">
-            Document why the current plan is insufficient. Complete the neurologist referral below —
-            do not change formulary as GP.
-          </p>
-          <label className="label">Clinical reason for escalation</label>
-          <textarea
-            className="textarea-field mb-4"
-            rows={3}
-            placeholder="e.g. breakthrough seizures, intolerable side effects, failed control on current dose…"
-            value={escalateReason}
-            onChange={(e) => setEscalateReason(e.target.value)}
-          />
-        </div>
+        <MedicationReportSummaryCard
+          patientName={patientCase.patientName}
+          condition={patientCase.condition}
+          clinicalReview={patientCase.clinicalReview}
+          clinicalReviewBasis={patientCase.clinicalReviewBasis}
+          medicationRenewNotes={medicationRenewNotes}
+          medications={currentMedications}
+          intent="refer_change"
+        />
       )}
 
       {(showMedicationRenew || showMedicationChange) && (
@@ -350,6 +400,10 @@ const FollowUpDocumentation = ({
             embedMode
             followUpMode
             reportMode={showMedicationChange ? 'change' : 'renew'}
+            initialGpDecision={showMedicationRenew ? 'renew' : null}
+            initialClinicalReview={patientCase.clinicalReview ?? null}
+            initialClinicalReviewBasis={patientCase.clinicalReviewBasis ?? ''}
+            specialistFlow={specialistFlow || showMedicationChange}
             currentMedications={currentMedications}
             medicationNote={medicationNote}
             condition={condition}
@@ -364,6 +418,12 @@ const FollowUpDocumentation = ({
                   sideEffects: data.sideEffects ?? medicationRenewNotes.sideEffects,
                   adherence: data.adherence ?? medicationRenewNotes.adherence,
                 });
+              }
+              if (data.clinicalReview !== undefined || data.clinicalReviewBasis !== undefined) {
+                onClinicalReviewChange?.(
+                  data.clinicalReview ?? patientCase.clinicalReview ?? null,
+                  data.clinicalReviewBasis ?? patientCase.clinicalReviewBasis
+                );
               }
             }}
             onSaveOnly={noopSave}
@@ -380,8 +440,21 @@ const FollowUpDocumentation = ({
             patientCase={patientCase}
             diagnosticClinicalNote={diagnosticClinicalNote}
             progressReview={progressReview}
-            initialReferralNote={escalateNoteSeed || undefined}
+            medicationRenewNotes={
+              showMedicationEscalate ? medicationRenewNotes : undefined
+            }
+            clinicalReview={
+              showMedicationEscalate ? patientCase.clinicalReview : undefined
+            }
+            hideDuplicateMedicationList={showMedicationEscalate}
+            initialReferralNote=""
             initialSpecialistType={defaultSpecialist}
+            specialistVisitUsage={specialistVisitUsage}
+            referralMotivationPlaceholder={
+              showMedicationEscalate
+                ? 'Write your message to the neurologist — why you need a medication review and what you want them to assess…'
+                : undefined
+            }
             onDataChange={setReferralData}
             onSavePdfOnly={noopSave}
             onSaveWithAttachments={noopSave}

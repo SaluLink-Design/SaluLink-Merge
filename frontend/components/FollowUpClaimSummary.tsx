@@ -235,8 +235,13 @@ const FollowUpClaimSummary = ({
 
           {clinicalReview && (
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
-              <h3 className="font-semibold text-slate-900 mb-1">Condition control</h3>
+              <h3 className="font-semibold text-slate-900 mb-1">Clinical assessment</h3>
               <p className="text-sm capitalize text-slate-700">{clinicalReview}</p>
+              {patientCase.clinicalReviewBasis?.trim() && (
+                <p className="text-xs text-slate-600 mt-2 whitespace-pre-wrap">
+                  {patientCase.clinicalReviewBasis.trim()}
+                </p>
+              )}
             </div>
           )}
 

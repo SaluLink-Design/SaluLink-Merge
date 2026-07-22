@@ -58,13 +58,6 @@ const doctorClaimBadgeClass: Record<ClaimType, string> = {
 const DOCTOR_STATUS_PILL_BASE =
   'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border';
 
-/** True when any claim in the group has a specialist-completed CIB the GP hasn't opened yet. */
-const hasUnseenSpecialistHandoff = (claims: PatientCase[]): boolean =>
-  claims.some((c) => c.cibEnrollmentStatus === 'registered' && c.specialistHandoffAcknowledged === false);
-
-const SPECIALIST_HANDOFF_BADGE_CLASS =
-  'ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border bg-violet-100 text-violet-700 border-violet-200 whitespace-nowrap';
-
 /**
  * True when a claim has an ordered/referred investigation still awaiting results.
  * Only a local signal today — the specialist side of an ongoing-visit referral does not
@@ -336,11 +329,6 @@ const Dashboard = ({
                           <td className="px-6 py-4">
                             <div className="flex items-center">
                               <span className={stClass}>{stLabel}</span>
-                              {hasUnseenSpecialistHandoff(group.claims) && (
-                                <span className={SPECIALIST_HANDOFF_BADGE_CLASS}>
-                                  Specialist completed CIB
-                                </span>
-                              )}
                               {hasPendingInvestigation(group.claims) && (
                                 <span className={PENDING_INVESTIGATION_BADGE_CLASS}>
                                   CIB awaiting specialist
@@ -441,11 +429,6 @@ const Dashboard = ({
                         <td className="px-6 py-4">
                           <div className="flex items-center">
                             {renderBadge(stBadge.label, stBadge.className)}
-                            {hasUnseenSpecialistHandoff(group.claims) && (
-                              <span className={SPECIALIST_HANDOFF_BADGE_CLASS}>
-                                Specialist completed CIB
-                              </span>
-                            )}
                             {hasPendingInvestigation(group.claims) && (
                               <span className={PENDING_INVESTIGATION_BADGE_CLASS}>
                                 CIB awaiting specialist

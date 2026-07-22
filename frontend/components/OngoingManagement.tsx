@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, type MouseEvent } from 'react';
 import { Upload, Repeat, X, FileText, Download, Check, CheckCircle, ChevronDown, ChevronUp, Scale, Activity, TrendingUp, TrendingDown, AlertTriangle, Loader2, BarChart3, Zap } from 'lucide-react';
-import { ClinicalAppeal, InvestigationOrder, PatientCase, PractitionerRole, SelectedMedication, TreatmentBasketItem, TreatmentItem } from '@/types';
+import { ClinicalAppeal, ClinicalReviewStatus, InvestigationOrder, PatientCase, PractitionerRole, SelectedMedication, TreatmentBasketItem, TreatmentItem } from '@/types';
 import { DataService } from '@/lib/dataService';
 import {
   getMaxCoveredFromBasketItem,
@@ -27,6 +27,7 @@ import {
 import FileUploadWithRename from './FileUploadWithRename';
 import MockProviderResultsPanel from './MockProviderResultsPanel';
 import CibInvestigationReferralForm from './CibInvestigationReferralForm';
+import ClinicalAssessmentCapture from './ClinicalAssessmentCapture';
 
 type MonitoringItemPhase = 'order' | 'awaiting' | 'document' | 'idle';
 
@@ -129,6 +130,7 @@ interface OngoingManagementProps {
   onOrderInvestigation?: (code: string, label: string) => void;
   onReferInvestigation?: (code: string, label: string) => void;
   onMockReceiveResults?: (orderId: string) => void;
+  onCancelInvestigation?: (orderId: string) => void;
   onRequestReferralFromBasket?: () => void;
   /**
    * Fired once a real referral (with a Supabase case_referrals row + token, or a local-only
@@ -137,6 +139,14 @@ interface OngoingManagementProps {
    */
   onConfirmReferral?: (code: string, label: string, referral: InvestigationReferralInput) => void;
   isReferring?: boolean;
+  /** Visit-level clinical assessment driven by monitoring findings */
+  clinicalReview?: ClinicalReviewStatus | null;
+  clinicalReviewBasis?: string;
+  onClinicalReviewChange?: (
+    status: ClinicalReviewStatus | null,
+    basis?: string
+  ) => void;
+  specialistFlow?: boolean;
 }
 
 const OngoingManagement = ({
@@ -165,13 +175,19 @@ const OngoingManagement = ({
   onOrderInvestigation,
   onReferInvestigation,
   onMockReceiveResults,
+  onCancelInvestigation,
   onRequestReferralFromBasket,
   onConfirmReferral,
   isReferring = false,
+  clinicalReview = null,
+  clinicalReviewBasis = '',
+  onClinicalReviewChange,
+  specialistFlow = false,
 }: OngoingManagementProps) => {
   const [basketItems, setBasketItems] = useState<TreatmentBasketItem[]>([]);
   const [itemHints, setItemHints] = useState<Map<string, RoleAwareBasketHint>>(new Map());
   const [expandedItem, setExpandedItem] = useState<string | null>(null);
+  const [expandedOrderKey, setExpandedOrderKey] = useState<string | null>(null);
   const [appealTargetKey, setAppealTargetKey] = useState<string | null>(null);
   const [appealRationale, setAppealRationale] = useState('');
   const [appealImages, setAppealImages] = useState<string[]>([]);
@@ -389,7 +405,9 @@ const OngoingManagement = ({
       item.ongoingManagementBasket.code,
       item.ongoingManagementBasket.description
     );
-    setExpandedItem(null);
+    setExpandedOrderKey(
+      `${item.ongoingManagementBasket.code}|${item.ongoingManagementBasket.description}`
+    );
   };
 
   const handleReferItem = (e: MouseEvent, item: TreatmentBasketItem) => {
@@ -398,7 +416,17 @@ const OngoingManagement = ({
     // immediately recording a local-only order — a referral nobody can act on.
     setReferralTarget(item);
     onRequestReferralFromBasket?.();
-    setExpandedItem(null);
+    setExpandedOrderKey(
+      `${item.ongoingManagementBasket.code}|${item.ongoingManagementBasket.description}`
+    );
+  };
+
+  const toggleOrderCard = (item: TreatmentBasketItem) => {
+    const key = `${item.ongoingManagementBasket.code}|${item.ongoingManagementBasket.description}`;
+    setExpandedOrderKey((prev) => (prev === key ? null : key));
+    if (referralTarget?.ongoingManagementBasket.code === item.ongoingManagementBasket.code) {
+      setReferralTarget(null);
+    }
   };
 
   const handleReferralConfirmed = (item: TreatmentBasketItem, referral: InvestigationReferralInput) => {
@@ -686,9 +714,8 @@ const OngoingManagement = ({
             <div className="mb-2">
               <h2 className="text-xl font-bold text-slate-900">Investigations</h2>
               <p className="text-sm text-slate-600 mt-1">
-                Order or refer each test, wait for the external provider to return results, then
-                record what came back — you are not performing pathology or EEG assays in this
-                screen.
+                Tap a test to select it, then order or refer from the expanded panel. Tap again to
+                collapse. You are not performing pathology or EEG assays on this screen.
               </p>
             </div>
             {orderQueue.length > 0 && (
@@ -706,12 +733,15 @@ const OngoingManagement = ({
                     investigationOrders,
                     item.ongoingManagementBasket.code
                   );
+                  const isExpanded = expandedOrderKey === basketKey;
                   const showOrderCta =
+                    isExpanded &&
                     phase === 'order' &&
                     hint?.primaryCta === 'order' &&
                     !pendingOrder &&
                     Boolean(onOrderInvestigation);
                   const showReferCta =
+                    isExpanded &&
                     phase === 'order' &&
                     hint?.primaryCta === 'refer' &&
                     !pendingOrder &&
@@ -720,9 +750,15 @@ const OngoingManagement = ({
                   return (
                     <div
                       key={`order-${item.ongoingManagementBasket.code}-${idx}`}
-                      className="brand-card"
+                      className={`transition-all duration-200 ${
+                        isExpanded ? 'brand-card-selected' : 'brand-card'
+                      }`}
                     >
-                      <div className="px-4 py-3.5">
+                      <button
+                        type="button"
+                        className="w-full text-left px-4 py-3.5"
+                        onClick={() => toggleOrderCard(item)}
+                      >
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -733,10 +769,16 @@ const OngoingManagement = ({
                                 className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
                                   phase === 'awaiting'
                                     ? 'bg-amber-50 text-amber-800 border-amber-200'
-                                    : 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                                    : isExpanded
+                                      ? 'bg-indigo-50 text-indigo-800 border-indigo-200'
+                                      : 'bg-slate-50 text-slate-600 border-slate-200'
                                 }`}
                               >
-                                {MONITORING_PHASE_LABEL[phase]}
+                                {phase === 'awaiting'
+                                  ? MONITORING_PHASE_LABEL.awaiting
+                                  : isExpanded
+                                    ? 'Selected'
+                                    : 'Available'}
                               </span>
                             </div>
                             <p className="text-sm text-slate-500">
@@ -758,11 +800,31 @@ const OngoingManagement = ({
                                 )}
                             </p>
                           </div>
+                          <div className="flex items-center gap-2 flex-shrink-0 pt-0.5">
+                            {isExpanded ? (
+                              <div className="brand-check">
+                                <Check className="w-3.5 h-3.5 text-white" />
+                              </div>
+                            ) : (
+                              <div className="w-6 h-6 border-2 border-gray-300 rounded-full" />
+                            )}
+                            {isExpanded ? (
+                              <ChevronUp className="w-5 h-5 text-gray-400" />
+                            ) : (
+                              <ChevronDown className="w-5 h-5 text-gray-400" />
+                            )}
+                          </div>
                         </div>
+                      </button>
 
-                        {phase === 'order' && hint && (
-                          <div className="mt-3 pt-3 border-t border-slate-100">
-                            <p className="text-sm text-slate-600 leading-relaxed">{hint.clinicalHint}</p>
+                      {isExpanded && phase === 'order' && hint && (
+                          <div
+                            className="px-4 pb-4 border-t border-slate-100"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <p className="pt-3 text-sm text-slate-600 leading-relaxed">
+                              {hint.clinicalHint}
+                            </p>
                             <p className="mt-1 text-xs text-slate-500">
                               Assign to: {hint.assigneeLabel || hint.assignedTo.join(', ')}
                             </p>
@@ -786,30 +848,44 @@ const OngoingManagement = ({
                                     {hint.coordinationLabel}
                                   </button>
                                 )}
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedOrderKey(null)}
+                                  className="text-sm font-medium px-4 py-2 rounded-xl border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+                                >
+                                  Unselect
+                                </button>
                               </div>
                             )}
                           </div>
                         )}
 
-                        {phase === 'order' &&
-                          referralTarget?.ongoingManagementBasket.code === item.ongoingManagementBasket.code && (
-                            <CibInvestigationReferralForm
-                              embedded
-                              condition={condition}
-                              template={buildOngoingReferralTemplate(
-                                item.ongoingManagementBasket.code,
-                                item.ongoingManagementBasket.description
-                              )}
-                              caseId={currentCaseId ?? undefined}
-                              isSubmitting={isReferring}
-                              onCancel={() => setReferralTarget(null)}
-                              onConfirm={(referral) => handleReferralConfirmed(item, referral)}
-                            />
+                        {isExpanded &&
+                          phase === 'order' &&
+                          referralTarget?.ongoingManagementBasket.code ===
+                            item.ongoingManagementBasket.code && (
+                            <div className="px-4 pb-4" onClick={(e) => e.stopPropagation()}>
+                              <CibInvestigationReferralForm
+                                embedded
+                                condition={condition}
+                                template={buildOngoingReferralTemplate(
+                                  item.ongoingManagementBasket.code,
+                                  item.ongoingManagementBasket.description
+                                )}
+                                caseId={currentCaseId ?? undefined}
+                                isSubmitting={isReferring}
+                                onCancel={() => setReferralTarget(null)}
+                                onConfirm={(referral) => handleReferralConfirmed(item, referral)}
+                              />
+                            </div>
                           )}
 
-                        {phase === 'awaiting' && (
-                          <div className="mt-3 pt-3 border-t border-amber-100">
-                            <p className="text-sm font-medium text-amber-800">
+                        {isExpanded && phase === 'awaiting' && (
+                          <div
+                            className="px-4 pb-4 border-t border-amber-100"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <p className="pt-3 text-sm font-medium text-amber-800">
                               Ordered — awaiting results
                               {itemOrder?.assigneeRole
                                 ? ` from ${itemOrder.assigneeRole.replace(/_/g, ' ')}`
@@ -820,6 +896,20 @@ const OngoingManagement = ({
                                 ? 'Pathology assays the sample. When the lab report returns, record the drug level and clinical plan on this same item.'
                                 : 'Results and documentation open on this same investigation once the external provider returns them.'}
                             </p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {itemOrder && onCancelInvestigation && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onCancelInvestigation(itemOrder.id);
+                                    setExpandedOrderKey(basketKey);
+                                  }}
+                                  className="text-sm font-medium px-4 py-2 rounded-xl border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                >
+                                  Cancel order
+                                </button>
+                              )}
+                            </div>
                             {itemOrder && onMockReceiveResults && (
                               <div className="mt-3">
                                 <MockProviderResultsPanel
@@ -827,13 +917,13 @@ const OngoingManagement = ({
                                   onSimulateResults={(orderId) => {
                                     onMockReceiveResults(orderId);
                                     setExpandedItem(item.ongoingManagementBasket.description);
+                                    setExpandedOrderKey(null);
                                   }}
                                 />
                               </div>
                             )}
                           </div>
                         )}
-                      </div>
                     </div>
                   );
                 })}
@@ -1191,6 +1281,21 @@ const OngoingManagement = ({
                 })
               )}
             </div>
+
+            {onClinicalReviewChange &&
+              treatments.some((t) => t.documentation?.notes?.trim()) &&
+              !monitoringSkipped && (
+              <div className="order-3 mt-4">
+                <ClinicalAssessmentCapture
+                  value={clinicalReview}
+                  onChange={(status) => onClinicalReviewChange(status, clinicalReviewBasis)}
+                  basis={clinicalReviewBasis}
+                  onBasisChange={(basis) => onClinicalReviewChange(clinicalReview, basis)}
+                  specialistFlow={specialistFlow}
+                  hint="Based on these monitoring results — not a separate assessment step."
+                />
+              </div>
+            )}
 
             {hideSaveActions && onSetMonitoringSkipped && treatments.length === 0 && (
               <div className="order-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">

@@ -12,6 +12,7 @@ import {
 } from '@/lib/caseService';
 import SpecialistCaseWorkspace from '@/components/SpecialistCaseWorkspace';
 import { useAuth } from '@/lib/AuthContext';
+import { splitReferralNotesAndFindings } from '@/lib/medicationReportSummary';
 
 interface ReferralInboxProps {
   workspaceId: string;
@@ -255,9 +256,16 @@ const ReferralInbox = ({ workspaceId, initialToken = '', onWorkspaceOpenChange }
         {referral.notes && (
           <div>
             <p className="text-xs uppercase tracking-widest text-slate-400 font-semibold mb-1">
-              Referral note
+              Referral message
             </p>
-            <p className="text-sm text-slate-600 whitespace-pre-wrap line-clamp-2">{referral.notes}</p>
+            <p className="text-sm text-slate-600 whitespace-pre-wrap line-clamp-2">
+              {splitReferralNotesAndFindings(referral.notes).referralMessage || referral.notes}
+            </p>
+            {splitReferralNotesAndFindings(referral.notes).medicationFindings && (
+              <p className="text-xs text-violet-700 mt-1 font-medium">
+                Includes medication report findings
+              </p>
+            )}
           </div>
         )}
 

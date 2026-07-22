@@ -58,7 +58,7 @@ const doctorClaimTypeOptions: {
     value: 'ongoing-management',
     label: 'Patient Follow-Up Visit',
     description:
-      'GP shared care — medication report, monitoring, or escalate to neurologist for major changes.',
+      'GP shared care — medication report (renew or refer for change), monitoring, or escalate to neurologist.',
     icon: <Activity className="w-5 h-5" />,
     primary: true,
   },

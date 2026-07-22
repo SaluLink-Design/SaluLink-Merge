@@ -7,8 +7,13 @@ import {
   SelectedMedication,
   BenefitState,
   MedicationRenewNotes,
+  ClinicalReviewStatus,
 } from '@/types';
-import MedicationReport, { MedicationReportFormData } from './MedicationReport';
+import MedicationReport, {
+  MedicationReportFormData,
+  GpMedicationDecision,
+} from './MedicationReport';
+import type { SpecialistVisitUsageSummary } from '@/lib/specialistVisitUsage';
 
 interface FollowUpVisitActionsProps {
   value: VisitActions;
@@ -18,6 +23,8 @@ interface FollowUpVisitActionsProps {
   /** Specialist annual review — full medication change allowed */
   specialistFlow?: boolean;
   clinicalReviewDeteriorating?: boolean;
+  clinicalReview?: ClinicalReviewStatus | null;
+  clinicalReviewBasis?: string;
   /** Needed to render the inline medication report when the GP selects that action */
   currentMedications?: SelectedMedication[];
   medicationNote?: string;
@@ -26,6 +33,12 @@ interface FollowUpVisitActionsProps {
   benefitState?: BenefitState | null;
   initialRenewNotes?: MedicationRenewNotes;
   onInlineRenewDataChange?: (data: MedicationReportFormData) => void;
+  /** Locked GP decision from parent (renew confirmed or escalate) */
+  gpMedicationDecision?: GpMedicationDecision | null;
+  /** Fired when GP chooses renew or refer-for-change inside the medication report */
+  onGpMedicationDecision?: (decision: GpMedicationDecision | null) => void;
+  /** Annual specialist-visit usage for this condition — shown as a soft referral-time signal, GP only */
+  specialistVisitUsage?: SpecialistVisitUsageSummary | null;
 }
 
 const workActions: {
@@ -39,8 +52,8 @@ const workActions: {
     key: 'medication',
     label: 'Medication report',
     description:
-      'Document adherence and side effects, then confirm repeat script on the neurologist-approved plan.',
-    hint: 'Same meds on file — not a regimen change',
+      'Document adherence and side effects, then renew the current plan or refer for a medication change.',
+    hint: 'Renew script — or escalate when therapy change is needed',
     icon: <Pill className="w-5 h-5" />,
   },
   {
@@ -61,10 +74,13 @@ const workActions: {
 
 const FollowUpVisitActions = ({
   value,
+  medicationMode,
   onChange,
   onMedicationModeChange,
   specialistFlow = false,
   clinicalReviewDeteriorating = false,
+  clinicalReview = null,
+  clinicalReviewBasis = '',
   currentMedications = [],
   medicationNote = '',
   condition = '',
@@ -72,16 +88,48 @@ const FollowUpVisitActions = ({
   benefitState,
   initialRenewNotes,
   onInlineRenewDataChange,
+  gpMedicationDecision = null,
+  onGpMedicationDecision,
+  specialistVisitUsage,
 }: FollowUpVisitActionsProps) => {
   const toggleWork = (key: 'medication' | 'monitoring' | 'referral') => {
-    onChange({ [key]: !value[key], continueOnly: false });
-    if (key === 'medication' && !value.medication) {
+    const turningOff = value[key];
+    // One visit job at a time — medication, monitoring, and escalate are exclusive.
+    onChange({
+      medication: key === 'medication' && !turningOff,
+      monitoring: key === 'monitoring' && !turningOff,
+      referral: key === 'referral' && !turningOff,
+      continueOnly: false,
+    });
+    if (key === 'medication' && !turningOff) {
       onMedicationModeChange('renew');
+      onGpMedicationDecision?.(null);
+      return;
     }
-    if (key === 'medication' && value.medication) {
-      onMedicationModeChange(null);
-    }
+    onMedicationModeChange(null);
+    onGpMedicationDecision?.(null);
   };
+
+  const handleGpDecision = (decision: GpMedicationDecision | null) => {
+    if (decision === 'renew') {
+      onMedicationModeChange('renew');
+      if (value.referral && medicationMode === 'escalate_change') {
+        onChange({ referral: false });
+      }
+    } else if (decision === 'refer_change') {
+      onMedicationModeChange('escalate_change');
+    } else {
+      onMedicationModeChange('renew');
+      if (value.referral && medicationMode === 'escalate_change') {
+        onChange({ referral: false });
+      }
+    }
+    onGpMedicationDecision?.(decision);
+  };
+
+  const lockedGpDecision: GpMedicationDecision | null =
+    gpMedicationDecision ??
+    (medicationMode === 'escalate_change' ? 'refer_change' : null);
 
   const medLabel = specialistFlow ? 'Review & update treatment plan' : 'Medication report';
   const actions = specialistFlow
@@ -111,12 +159,12 @@ const FollowUpVisitActions = ({
         <h2 className="text-2xl font-bold text-slate-900">What does this visit need?</h2>
         <p className="text-sm text-slate-500 mt-1">
           {specialistFlow
-            ? 'Select actions for this specialist review visit.'
-            : 'Select day-to-day GP actions. For plan continuation, complete a medication report — major changes use Escalate to neurologist.'}
+            ? 'Choose one action for this specialist review visit.'
+            : 'Choose one action for this visit. Renew the approved plan from the medication report, order monitoring, or escalate when needed.'}
         </p>
         {clinicalReviewDeteriorating && !specialistFlow && (
           <p className="text-xs text-amber-700 mt-2 font-medium">
-            Condition marked deteriorating — strongly consider Escalate to neurologist.
+            Condition marked deteriorating — strongly consider Refer for medication review or Escalate to neurologist.
           </p>
         )}
       </div>
@@ -145,6 +193,19 @@ const FollowUpVisitActions = ({
               </div>
               <p className="text-xs text-slate-500 leading-relaxed">{opt.description}</p>
               <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">{opt.hint}</p>
+              {opt.key === 'referral' && !specialistFlow && specialistVisitUsage?.maxCovered != null && (
+                <p className="text-[11px] text-amber-700 mt-2 leading-relaxed font-medium">
+                  {specialistVisitUsage.usedHistorical} of {specialistVisitUsage.maxCovered} specialist
+                  visits used this year
+                  {specialistVisitUsage.isExhausted
+                    ? ' — this referral would be over the covered limit.'
+                    : specialistVisitUsage.remaining === 1
+                      ? ' — this referral would be the last covered visit.'
+                      : '.'}
+                  {' '}
+                  <span className="text-slate-400 font-normal">(Visits tracked in SaluLink)</span>
+                </p>
+              )}
             </button>
           );
         })}
@@ -152,15 +213,24 @@ const FollowUpVisitActions = ({
 
       {value.medication && !value.continueOnly && !specialistFlow && (
         <div className="mb-4 rounded-xl border border-violet-100 bg-violet-50/50 p-4">
-          <p className="text-sm font-semibold text-violet-900 mb-1">Medication report</p>
+          <p className="text-sm font-semibold text-violet-900 mb-1">
+            {medicationMode === 'escalate_change'
+              ? 'Medication report — refer for change'
+              : 'Medication report'}
+          </p>
           <p className="text-xs text-slate-500 mb-3">
-            Confirm the current medications, adherence, and side effects for this visit.
+            Review current meds and side effects, assess control, then renew the plan or refer for a
+            medication change.
           </p>
           <div className="rounded-xl border border-violet-200 bg-white p-4">
             <MedicationReport
               embedMode
               followUpMode
               reportMode="renew"
+              initialGpDecision={lockedGpDecision}
+              initialClinicalReview={clinicalReview}
+              initialClinicalReviewBasis={clinicalReviewBasis}
+              specialistFlow={false}
               currentMedications={currentMedications}
               medicationNote={medicationNote}
               condition={condition}
@@ -168,6 +238,7 @@ const FollowUpVisitActions = ({
               benefitState={benefitState}
               initialRenewNotes={initialRenewNotes}
               onDataChange={onInlineRenewDataChange}
+              onGpDecision={handleGpDecision}
               onSaveOnly={() => {}}
               onSavePdfOnly={() => {}}
               onSaveWithAttachments={() => {}}

@@ -107,7 +107,10 @@ export function filterCasesByProfile(cases: PatientCase[], profileId: string): P
 
 /** Claims visible in portfolio, dashboard, and patient record — excludes in-progress drafts */
 export function isPortfolioClaim(c: PatientCase): boolean {
-  return !c.isWorkflowDraft;
+  if (c.isWorkflowDraft) return false;
+  // Draft status is workflow-only — never show as a portfolio claim row
+  if (c.status === 'draft') return false;
+  return true;
 }
 
 /** In-progress claim that can be resumed instead of starting a duplicate draft */

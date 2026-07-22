@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '@/lib/store';
 import { DataService } from '@/lib/dataService';
+import { getSpecialistVisitUsageSummary } from '@/lib/specialistVisitUsage';
 import { PDFExportService } from '@/lib/pdfExport';
 import {
   saveCaseToDatabase,
@@ -32,9 +33,11 @@ import ChronicRegistrationNote from '@/components/ChronicRegistrationNote';
 import FollowUpDocumentation, { FollowUpCompletionPayload } from '@/components/FollowUpDocumentation';
 import FollowUpClaimSummary from '@/components/FollowUpClaimSummary';
 import FollowUpVisitActions from '@/components/FollowUpVisitActions';
-import FollowUpConditionControl from '@/components/FollowUpConditionControl';
 import FollowUpBasketUtilisation from '@/components/FollowUpBasketUtilisation';
-import MedicationReport, { MedicationReportFormData } from '@/components/MedicationReport';
+import MedicationReport, {
+  MedicationReportFormData,
+  type GpMedicationDecision,
+} from '@/components/MedicationReport';
 import Referral from '@/components/Referral';
 import FinalClaimSummary from '@/components/FinalClaimSummary';
 import PatientExportModal from '@/components/PatientExportModal';
@@ -193,9 +196,13 @@ export default function Home() {
   const [claimCompletionSource, setClaimCompletionSource] = useState<'cib' | 'final' | 'follow-up'>('final');
   const [pendingFollowUpPayload, setPendingFollowUpPayload] = useState<FollowUpCompletionPayload | null>(null);
   const [inlineRenewReport, setInlineRenewReport] = useState<MedicationReportFormData | null>(null);
+  const [gpMedicationDecision, setGpMedicationDecision] = useState<GpMedicationDecision | null>(null);
   useEffect(() => {
-    if (store.medicationMode !== 'renew') {
+    if (store.medicationMode == null) {
       setInlineRenewReport(null);
+      setGpMedicationDecision(null);
+    } else if (store.medicationMode === 'escalate_change') {
+      setGpMedicationDecision('refer_change');
     }
   }, [store.medicationMode]);
   const [patientName, setPatientName] = useState('');
@@ -234,6 +241,7 @@ export default function Home() {
   const [recordProfileId, setRecordProfileId] = useState<string | null>(null);
   // Prefill data for "New Claim for this Patient"
   const [patientInfoPrefill, setPatientInfoPrefill] = useState<Partial<PatientInfo> | undefined>(undefined);
+  const mainScrollRef = useRef<HTMLDivElement>(null);
 
   const [showCibAssistant, setShowCibAssistant] = useState(false);
   const [isCibSubmitting, setIsCibSubmitting] = useState(false);
@@ -911,11 +919,24 @@ export default function Home() {
     setLastAnalyzedNote('');
   };
 
-  const handleBackToPatientProfile = () => {
+  const handleBackToPatientProfile = (profileId?: string | null) => {
+    // Guard against onClick handlers passing a MouseEvent as the first arg.
+    const explicitId = typeof profileId === 'string' && profileId.trim() ? profileId : null;
+    const resolvedProfileId =
+      explicitId ||
+      selectedProfileId ||
+      (currentCaseForView ? resolveProfileId(currentCaseForView) : null);
     abandonWorkflowDraft();
-    setCurrentView('patient-profile');
+    if (resolvedProfileId) {
+      setSelectedProfileId(resolvedProfileId);
+      setCurrentView('patient-profile');
+    } else {
+      setCurrentView('dashboard');
+      setSelectedProfileId(null);
+    }
     setSelectedCaseId(null);
     setCurrentCaseForView(null);
+    store.resetWorkflow();
   };
 
   /** Remove unsaved New Case Action drafts when leaving the workflow without saving */
@@ -924,7 +945,21 @@ export default function Home() {
     if (!draftId) return;
     const draft = store.cases.find((c) => c.id === draftId);
     if (!draft?.isWorkflowDraft) return;
-    // Once a condition is chosen the case is synced to Supabase — keep it as the single resumable draft
+
+    const isSharedCareDraft =
+      draft.claimType === 'ongoing-management' ||
+      draft.claimType === 'specialist-review' ||
+      draft.claimType === 'medication-report';
+
+    // Follow-up / specialist visits always have condition prefilled — never leave a Draft claim.
+    if (isSharedCareDraft) {
+      store.deleteCase(draftId);
+      setSelectedCaseId(null);
+      return;
+    }
+
+    // Diagnostic: once a condition is chosen the case is synced to Supabase — keep as resumable
+    // (hidden from portfolio Claims list; resume via Continue registration).
     if (draft.condition?.trim() || draft.status === 'draft') {
       store.updateCase(draftId, {
         isWorkflowDraft: false,
@@ -940,6 +975,19 @@ export default function Home() {
     for (const caseId of pruneSupersededPortfolioDrafts(store.cases, profileId)) {
       if (caseId === keepCaseId) continue;
       store.deleteCase(caseId);
+    }
+    // Leftover follow-up / specialist drafts must never sit in Claims — delete them.
+    for (const claim of filterCasesByProfile(store.cases, profileId)) {
+      if (claim.id === keepCaseId) continue;
+      const isSharedCare =
+        claim.claimType === 'ongoing-management' ||
+        claim.claimType === 'specialist-review' ||
+        claim.claimType === 'medication-report';
+      if (!isSharedCare) continue;
+      if (claim.status === 'completed' || claim.status === 'ongoing') continue;
+      if (claim.isWorkflowDraft || claim.status === 'draft' || claim.status === 'new') {
+        store.deleteCase(claim.id);
+      }
     }
   };
 
@@ -1189,6 +1237,7 @@ export default function Home() {
         store.setMedicationRenewNotes({ ...EMPTY_MEDICATION_RENEW_NOTES });
         store.setTreatmentDecision(null);
         store.setClinicalReview(null);
+        store.setClinicalReviewBasis('');
         store.setMonitoringSkipped(false);
       }
 
@@ -1477,6 +1526,82 @@ export default function Home() {
   const finalStepIndex = () => (isUnregisteredDiagnosticFlow() ? 3 : 5);
   const registrationWorkspaceStep = () => 2;
 
+  const advancePureMedicationRenew = (report: MedicationReportFormData) => {
+    const derived = deriveTreatmentDecisionFromVisitActions(
+      store.followUpVisitActions,
+      'renew'
+    );
+    store.setTreatmentDecision(derived);
+    if (store.currentCaseId) {
+      store.updateCase(store.currentCaseId, {
+        followUpVisitActions: store.followUpVisitActions,
+        medicationMode: 'renew',
+        medicationRenewNotes: {
+          sideEffects: report.sideEffects ?? store.medicationRenewNotes.sideEffects,
+          adherence: report.adherence ?? store.medicationRenewNotes.adherence,
+        },
+        treatmentDecision: derived,
+        clinicalReview: store.clinicalReview ?? undefined,
+        clinicalReviewBasis: store.clinicalReviewBasis || undefined,
+        clinicalNote: store.clinicalNote,
+      });
+    }
+    setPendingFollowUpPayload({
+      includeMedicationReport: true,
+      includeReferral: false,
+      medicationReport: {
+        ...report,
+        renewConfirmed: true,
+        gpMedicationDecision: 'renew',
+        newMedications:
+          report.newMedications ??
+          (store.medications.length > 0 ? store.medications : undefined),
+      },
+      medicationMode: 'renew',
+      medicationRenewNotes: {
+        sideEffects: report.sideEffects ?? store.medicationRenewNotes.sideEffects,
+        adherence: report.adherence ?? store.medicationRenewNotes.adherence,
+      },
+    });
+    store.setCurrentStep(CHRONIC_FINAL_STEP);
+  };
+
+  const handleGpMedicationDecision = (decision: GpMedicationDecision | null) => {
+    setGpMedicationDecision(decision);
+    if (decision === null) {
+      setInlineRenewReport((prev) =>
+        prev ? { ...prev, renewConfirmed: false, gpMedicationDecision: null } : prev
+      );
+      return;
+    }
+    if (decision !== 'renew') return;
+
+    const onlyMedicationRenew =
+      store.followUpVisitActions.medication &&
+      !store.followUpVisitActions.monitoring &&
+      !store.followUpVisitActions.referral;
+    if (!onlyMedicationRenew || isSpecialistReviewFlow()) return;
+
+    if (store.medications.length === 0) {
+      alert(
+        'No medications on file to renew — check the patient portfolio or refer for medication review.'
+      );
+      setGpMedicationDecision(null);
+      return;
+    }
+
+    const report: MedicationReportFormData = {
+      followUpNotes: inlineRenewReport?.followUpNotes ?? '',
+      ...inlineRenewReport,
+      renewConfirmed: true,
+      gpMedicationDecision: 'renew',
+      sideEffects: inlineRenewReport?.sideEffects ?? store.medicationRenewNotes.sideEffects,
+      adherence: inlineRenewReport?.adherence ?? store.medicationRenewNotes.adherence,
+    };
+    setInlineRenewReport(report);
+    advancePureMedicationRenew(report);
+  };
+
   const handleNextStep = () => {
     if (isSharedCareVisitFlow()) {
       const specialistFlow = isSpecialistReviewFlow();
@@ -1489,41 +1614,59 @@ export default function Home() {
           store.updateCase(store.currentCaseId, { clinicalNote: store.clinicalNote });
         }
       }
-      if (store.currentStep === 1 && !store.clinicalReview) {
-        alert('Confirm whether the condition is improving, stable, or deteriorating.');
-        return;
-      }
-      if (store.currentStep === 2 && !hasFollowUpVisitActionsSelected(store.followUpVisitActions)) {
+      if (store.currentStep === 1 && !hasFollowUpVisitActionsSelected(store.followUpVisitActions)) {
         alert('Select at least one visit action, or continue current plan only.');
         return;
       }
       if (
-        store.currentStep === 2 &&
+        store.currentStep === 1 &&
         store.followUpVisitActions.medication &&
         !specialistFlow &&
         !store.medicationMode
       ) {
         store.setMedicationMode('renew');
       }
+      if (
+        store.currentStep === 1 &&
+        store.followUpVisitActions.medication &&
+        !specialistFlow &&
+        !gpMedicationDecision &&
+        store.medicationMode !== 'escalate_change'
+      ) {
+        alert('Choose Renew medication or Refer for medication review before continuing.');
+        return;
+      }
+      if (
+        store.currentStep === 1 &&
+        store.followUpVisitActions.medication &&
+        !specialistFlow &&
+        !store.clinicalReview
+      ) {
+        alert(
+          'Record a clinical assessment from the medication feedback (improving, stable, or deteriorating) before continuing.'
+        );
+        return;
+      }
       const onlyMedicationRenewFastPath =
         !specialistFlow &&
         store.followUpVisitActions.medication &&
         store.medicationMode === 'renew' &&
+        gpMedicationDecision === 'renew' &&
         !store.followUpVisitActions.monitoring &&
         !store.followUpVisitActions.referral;
-      if (store.currentStep === 2 && onlyMedicationRenewFastPath) {
-        if (!inlineRenewReport?.renewConfirmed) {
+      if (store.currentStep === 1 && onlyMedicationRenewFastPath) {
+        if (!inlineRenewReport?.renewConfirmed && gpMedicationDecision !== 'renew') {
           alert('Confirm renewal of the current medication plan before continuing.');
           return;
         }
         if (store.medications.length === 0) {
           alert(
-            'No medications on file to renew — check the patient portfolio or escalate to neurologist.'
+            'No medications on file to renew — check the patient portfolio or refer for medication review.'
           );
           return;
         }
       }
-      if (store.currentStep === 2) {
+      if (store.currentStep === 1) {
         // Specialist treatment-plan decision (continue vs change) is chosen in Complete Actions.
         // Keep a provisional continue until documentation sets the real decision.
         const derived =
@@ -1541,6 +1684,7 @@ export default function Home() {
             medicationRenewNotes: store.medicationRenewNotes,
             treatmentDecision: derived,
             clinicalReview: store.clinicalReview ?? undefined,
+            clinicalReviewBasis: store.clinicalReviewBasis || undefined,
             clinicalNote: store.clinicalNote,
           });
         }
@@ -1556,7 +1700,18 @@ export default function Home() {
           setPendingFollowUpPayload({
             includeMedicationReport: true,
             includeReferral: false,
-            medicationReport: inlineRenewReport ?? undefined,
+            medicationReport: {
+              followUpNotes: inlineRenewReport?.followUpNotes ?? '',
+              ...inlineRenewReport,
+              renewConfirmed: true,
+              gpMedicationDecision: 'renew',
+              sideEffects:
+                inlineRenewReport?.sideEffects ?? store.medicationRenewNotes.sideEffects,
+              adherence: inlineRenewReport?.adherence ?? store.medicationRenewNotes.adherence,
+              newMedications:
+                inlineRenewReport?.newMedications ??
+                (store.medications.length > 0 ? store.medications : undefined),
+            },
             medicationMode: store.medicationMode,
             medicationRenewNotes: store.medicationRenewNotes,
           });
@@ -1632,10 +1787,11 @@ export default function Home() {
         (!isSpecialistReviewFlow() &&
           store.followUpVisitActions.medication &&
           store.medicationMode === 'renew' &&
+          gpMedicationDecision === 'renew' &&
           !store.followUpVisitActions.monitoring &&
           !store.followUpVisitActions.referral);
       if (store.currentStep === CHRONIC_FINAL_STEP && skippedCompleteActions) {
-        store.setCurrentStep(2);
+        store.setCurrentStep(1);
         return;
       }
       store.setCurrentStep(Math.max(0, store.currentStep - 1));
@@ -1868,6 +2024,7 @@ export default function Home() {
       progressReview: store.progressReview,
       treatmentDecision: store.treatmentDecision ?? base?.treatmentDecision,
       clinicalReview: store.clinicalReview ?? base?.clinicalReview,
+      clinicalReviewBasis: store.clinicalReviewBasis || base?.clinicalReviewBasis,
       monitoringSkipped: store.monitoringSkipped,
       monitoringSkipReason: store.monitoringSkipReason || base?.monitoringSkipReason,
       condition: store.selectedCondition || base?.condition || '',
@@ -1973,6 +2130,7 @@ export default function Home() {
       progressReview: store.progressReview,
       treatmentDecision: store.treatmentDecision ?? undefined,
       clinicalReview: store.clinicalReview ?? undefined,
+      clinicalReviewBasis: store.clinicalReviewBasis || undefined,
       monitoringSkipped: store.monitoringSkipped,
       monitoringSkipReason: store.monitoringSkipReason || undefined,
       diagnosticTreatments: store.diagnosticTreatments,
@@ -2317,6 +2475,7 @@ export default function Home() {
       medicationRenewNotes: store.medicationRenewNotes,
       treatmentDecision: derived,
       clinicalReview: store.clinicalReview ?? undefined,
+      clinicalReviewBasis: store.clinicalReviewBasis || undefined,
       ongoingTreatments: [...store.ongoingTreatments],
       investigationOrders: currentCase?.investigationOrders,
       monitoringSkipped: store.monitoringSkipped,
@@ -2339,15 +2498,17 @@ export default function Home() {
       const renewNotes = buildVisitContextNotes(
         store.clinicalNote,
         store.clinicalReview,
-        payload.medicationRenewNotes ?? store.medicationRenewNotes
+        payload.medicationRenewNotes ?? store.medicationRenewNotes,
+        store.clinicalReviewBasis
       );
       const isRenew =
         payload.medicationMode === 'renew' ||
         mode === 'renew' ||
         mode === 'standalone_renew' ||
         treatmentPlanDecision === 'continue';
+      const isEscalateChange = payload.medicationMode === 'escalate_change';
 
-      if (isRenew) {
+      if (isRenew || isEscalateChange) {
         persistMedicationReportChanges(
           renewNotes,
           store.medications.length > 0 ? store.medications : newMedications,
@@ -2781,13 +2942,12 @@ export default function Home() {
 
   const chronicCareSteps = [
     { id: 0, title: 'Visit Context' },
-    { id: 1, title: 'Condition Control' },
-    { id: 2, title: 'Visit Actions' },
-    { id: 3, title: 'Complete Actions' },
-    { id: 4, title: 'Visit Summary' },
+    { id: 1, title: 'Visit Actions' },
+    { id: 2, title: 'Complete Actions' },
+    { id: 3, title: 'Visit Summary' },
   ];
 
-  const CHRONIC_FINAL_STEP = 4;
+  const CHRONIC_FINAL_STEP = 3;
 
   const isSharedCareVisitFlow = () =>
     currentClaimType === 'ongoing-management' || currentClaimType === 'specialist-review';
@@ -2798,9 +2958,8 @@ export default function Home() {
 
   const resumeChronicFollowUpStep = (caseData: PatientCase) => {
     if (!caseData.clinicalNote?.trim()) return 0;
-    if (!caseData.clinicalReview) return 1;
     const actions = caseData.followUpVisitActions ?? EMPTY_FOLLOW_UP_VISIT_ACTIONS;
-    if (!hasFollowUpVisitActionsSelected(actions)) return 2;
+    if (!hasFollowUpVisitActionsSelected(actions)) return 1;
     if (actions.continueOnly) return CHRONIC_FINAL_STEP;
     // Pure renew (no monitoring/referral) is captured inline in Visit Actions — no Complete Actions step
     const isPureRenewDraft =
@@ -2809,10 +2968,17 @@ export default function Home() {
       !actions.monitoring &&
       !actions.referral &&
       caseData.claimType !== 'specialist-review';
-    if (isPureRenewDraft) return 2;
-    if (caseData.status !== 'completed') return 3;
+    if (isPureRenewDraft) return 1;
+    if (caseData.status !== 'completed') return 2;
     return CHRONIC_FINAL_STEP;
   };
+
+  // Keep the main pane pinned to the top on every screen/step change so
+  // Continue / View Claim / New Case Action never lands mid-scroll.
+  useEffect(() => {
+    mainScrollRef.current?.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [currentView, store.currentStep]);
 
   if (auth.authLoading || (auth.session && auth.isLoading)) {
     return (
@@ -3211,7 +3377,7 @@ export default function Home() {
           userRole === 'assistant'
             ? handleBackToAssistantHome
             : cameFromProfile
-              ? handleBackToPatientProfile
+              ? () => handleBackToPatientProfile()
               : handleBackToDashboard
         }
         readOnly={userRole === 'assistant'}
@@ -3333,9 +3499,16 @@ export default function Home() {
             <div className="flex justify-between items-center h-20">
               <div className="flex items-center gap-4">
                 <button
-                  onClick={handleBackToDashboard}
+                  onClick={() => {
+                    const profileId = selectedProfileId || workflowProfileId;
+                    if (profileId) {
+                      handleBackToPatientProfile(profileId);
+                      return;
+                    }
+                    handleBackToDashboard();
+                  }}
                   className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
-                  title="Back"
+                  title="Back to patient profile"
                 >
                   <ArrowLeft className="w-6 h-6 text-slate-500" />
                 </button>
@@ -3787,8 +3960,20 @@ export default function Home() {
             !specialistFlow &&
             store.followUpVisitActions.medication &&
             store.medicationMode === 'renew' &&
+            gpMedicationDecision === 'renew' &&
             !store.followUpVisitActions.monitoring &&
             !store.followUpVisitActions.referral;
+          const medicationDecisionPending =
+            !specialistFlow &&
+            store.followUpVisitActions.medication &&
+            !gpMedicationDecision &&
+            store.medicationMode !== 'escalate_change';
+          const hideVisitActionsContinue =
+            store.currentStep === 1 &&
+            medicationDecisionPending &&
+            !store.followUpVisitActions.monitoring &&
+            !store.followUpVisitActions.referral &&
+            !store.followUpVisitActions.continueOnly;
           const rawFollowUpCondition =
             store.selectedCondition ||
             store.cases.find((c) => c.id === store.currentCaseId)?.condition ||
@@ -3798,6 +3983,16 @@ export default function Home() {
             : '';
           const followUpPatientId =
             patientId || store.cases.find((c) => c.id === store.currentCaseId)?.patientId || '';
+          const specialistVisitUsage =
+            followUpCondition && followUpPatientId
+              ? getSpecialistVisitUsageSummary(
+                  DataService.getOngoingBasketForCondition(followUpCondition),
+                  followUpPatientId,
+                  followUpCondition,
+                  store.cases,
+                  { excludeCaseId: store.currentCaseId }
+                )
+              : null;
           const followUpPatientCases = (() => {
             const current = store.cases.find((c) => c.id === store.currentCaseId);
             return current
@@ -3807,12 +4002,14 @@ export default function Home() {
           const assessmentNote = buildFollowUpAssessmentNote(
             store.clinicalNote,
             store.progressReview,
-            store.clinicalReview
+            store.clinicalReview,
+            store.clinicalReviewBasis
           );
           const visitContextNotes = buildVisitContextNotes(
             store.clinicalNote,
             store.clinicalReview,
-            store.medicationRenewNotes
+            store.medicationRenewNotes,
+            store.clinicalReviewBasis
           );
           const derivedDecision =
             (pendingFollowUpPayload?.medicationReport?.treatmentPlanDecision
@@ -3835,6 +4032,7 @@ export default function Home() {
                 progressReview: store.progressReview,
                 treatmentDecision: store.treatmentDecision ?? undefined,
                 clinicalReview: store.clinicalReview ?? undefined,
+                clinicalReviewBasis: store.clinicalReviewBasis || undefined,
                 ongoingTreatments: store.ongoingTreatments,
               }
             : null;
@@ -3904,21 +4102,6 @@ export default function Home() {
                 )}
 
                 {store.currentStep === 1 && (
-                  <FollowUpConditionControl
-                    value={store.clinicalReview}
-                    onChange={store.setClinicalReview}
-                    onSuggestEscalate={
-                      specialistFlow
-                        ? undefined
-                        : () => {
-                            store.setCurrentStep(2);
-                            store.setFollowUpVisitActions({ referral: true, continueOnly: false });
-                          }
-                    }
-                  />
-                )}
-
-                {store.currentStep === 2 && (
                   <FollowUpVisitActions
                     value={store.followUpVisitActions}
                     medicationMode={store.medicationMode}
@@ -3926,22 +4109,42 @@ export default function Home() {
                     onMedicationModeChange={store.setMedicationMode}
                     specialistFlow={specialistFlow}
                     clinicalReviewDeteriorating={store.clinicalReview === 'deteriorating'}
+                    clinicalReview={store.clinicalReview}
+                    clinicalReviewBasis={store.clinicalReviewBasis}
                     currentMedications={store.medications}
                     medicationNote={store.medicationNote}
                     condition={followUpCondition}
                     selectedPlan={store.selectedPlan}
                     benefitState={store.activeBenefitState}
                     initialRenewNotes={store.medicationRenewNotes}
-                    onInlineRenewDataChange={setInlineRenewReport}
+                    onInlineRenewDataChange={(data) => {
+                      setInlineRenewReport(data);
+                      if (data.sideEffects !== undefined || data.adherence !== undefined) {
+                        store.setMedicationRenewNotes({
+                          sideEffects: data.sideEffects ?? store.medicationRenewNotes.sideEffects,
+                          adherence: data.adherence ?? store.medicationRenewNotes.adherence,
+                        });
+                      }
+                      if (data.clinicalReview !== undefined) {
+                        store.setClinicalReview(data.clinicalReview ?? null);
+                      }
+                      if (data.clinicalReviewBasis !== undefined) {
+                        store.setClinicalReviewBasis(data.clinicalReviewBasis ?? '');
+                      }
+                    }}
+                    gpMedicationDecision={gpMedicationDecision}
+                    onGpMedicationDecision={handleGpMedicationDecision}
+                    specialistVisitUsage={specialistVisitUsage}
                   />
                 )}
 
-                {store.currentStep === 3 && workflowCaseSnapshot && (
+                {store.currentStep === 2 && workflowCaseSnapshot && (
                   <FollowUpDocumentation
                     patientCase={{
                       ...workflowCaseSnapshot,
                       clinicalNote: store.clinicalNote,
                       clinicalReview: store.clinicalReview ?? undefined,
+                      clinicalReviewBasis: store.clinicalReviewBasis || undefined,
                       medications: store.medications,
                       medicationNote: store.medicationNote,
                     }}
@@ -3949,6 +4152,10 @@ export default function Home() {
                     medicationMode={store.medicationMode}
                     medicationRenewNotes={store.medicationRenewNotes}
                     onMedicationRenewNotesChange={store.setMedicationRenewNotes}
+                    onClinicalReviewChange={(status, basis) => {
+                      store.setClinicalReview(status);
+                      if (basis !== undefined) store.setClinicalReviewBasis(basis);
+                    }}
                     progressReview={store.progressReview}
                     ongoingTreatments={store.ongoingTreatments}
                     currentMedications={store.medications}
@@ -3963,6 +4170,7 @@ export default function Home() {
                     initialFollowUpNotes={visitContextNotes}
                     monitoringSkipped={store.monitoringSkipped}
                     specialistFlow={specialistFlow}
+                    specialistVisitUsage={specialistVisitUsage}
                     onSetMonitoringSkipped={(skipped, reason) =>
                       store.setMonitoringSkipped(skipped, reason)
                     }
@@ -4012,6 +4220,10 @@ export default function Home() {
                       if (!store.currentCaseId) return;
                       store.mockReceiveOngoingResults(store.currentCaseId, orderId);
                     }}
+                    onCancelInvestigation={(orderId) => {
+                      if (!store.currentCaseId) return;
+                      store.cancelOngoingInvestigation(store.currentCaseId, orderId);
+                    }}
                     onRequestReferralFromBasket={() => {
                       store.setFollowUpVisitActions({
                         ...store.followUpVisitActions,
@@ -4040,7 +4252,7 @@ export default function Home() {
                   />
                 )}
 
-                {store.currentStep === 4 && workflowCaseSnapshot && derivedDecision && (
+                {store.currentStep === 3 && workflowCaseSnapshot && derivedDecision && (
                   <FollowUpClaimSummary
                     patientCase={{
                       ...workflowCaseSnapshot,
@@ -4066,7 +4278,7 @@ export default function Home() {
                   />
                 )}
 
-                {store.currentStep < 3 && (
+                {store.currentStep < 2 && !hideVisitActionsContinue && (
                 <div className="flex justify-between">
                   <button
                     onClick={handlePreviousStep}
@@ -4078,13 +4290,23 @@ export default function Home() {
                   </button>
                   <button onClick={handleNextStep} className="btn-primary flex items-center gap-2">
                     {store.currentStep === 0
-                      ? 'Continue to Condition Control'
-                      : store.currentStep === 1
                       ? 'Continue to Visit Actions'
                       : store.followUpVisitActions.continueOnly || onlyMedicationRenewFastPath
                       ? 'Continue to Visit Summary'
                       : 'Continue to Complete Actions'}
                     <ArrowRight className="w-5 h-5" />
+                  </button>
+                </div>
+                )}
+                {store.currentStep < 2 && hideVisitActionsContinue && (
+                <div className="flex justify-start">
+                  <button
+                    onClick={handlePreviousStep}
+                    disabled={store.currentStep === 0}
+                    className="btn-secondary flex items-center gap-2 disabled:opacity-40"
+                  >
+                    <ArrowLeft className="w-5 h-5" />
+                    Back
                   </button>
                 </div>
                 )}
@@ -4195,7 +4417,7 @@ export default function Home() {
         userRole={userRole}
         onSignOut={() => void handleLogout()}
       />
-      <div className="flex-1 ml-60 min-w-0 overflow-y-auto">
+      <div ref={mainScrollRef} className="flex-1 ml-60 min-w-0 overflow-y-auto">
         {renderView()}
       </div>
     </div>
