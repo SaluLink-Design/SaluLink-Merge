@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Activity, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Activity, ArrowLeft, CheckCircle, Plus } from 'lucide-react';
 import {
   BenefitState,
   ClinicalAppeal,
@@ -48,6 +48,10 @@ interface FollowUpDocumentationProps {
     status: ClinicalReviewStatus | null,
     basis?: string
   ) => void;
+  /** Lets the doctor add Medication report and/or Monitoring tests to this same visit,
+   *  instead of spending a second (limited) specialist visit later. */
+  onVisitActionsChange?: (updates: Partial<FollowUpVisitActions>) => void;
+  onMedicationModeChange?: (mode: MedicationMode | null) => void;
   progressReview: ProgressReview;
   ongoingTreatments: TreatmentItem[];
   currentMedications: SelectedMedication[];
@@ -61,7 +65,6 @@ interface FollowUpDocumentationProps {
   monitoringSkipped?: boolean;
   specialistFlow?: boolean;
   specialistVisitUsage?: SpecialistVisitUsageSummary | null;
-  onSetMonitoringSkipped?: (skipped: boolean, reason?: string) => void;
   onAddTreatment: (treatment: TreatmentItem) => void;
   onUpdateTreatment: (index: number, treatment: Partial<TreatmentItem>) => void;
   onRemoveTreatment: (index: number) => void;
@@ -90,6 +93,8 @@ const FollowUpDocumentation = ({
   medicationRenewNotes,
   onMedicationRenewNotesChange,
   onClinicalReviewChange,
+  onVisitActionsChange,
+  onMedicationModeChange,
   progressReview,
   ongoingTreatments,
   currentMedications,
@@ -103,7 +108,6 @@ const FollowUpDocumentation = ({
   monitoringSkipped = false,
   specialistFlow = false,
   specialistVisitUsage = null,
-  onSetMonitoringSkipped,
   onAddTreatment,
   onUpdateTreatment,
   onRemoveTreatment,
@@ -193,142 +197,122 @@ const FollowUpDocumentation = ({
         : undefined,
   });
 
-  const validate = (): boolean => {
-    if (showMonitoring && ongoingTreatments.length === 0 && !monitoringSkipped) {
-      alert(
-        'Select at least one monitoring item for this visit, or mark that no monitoring is needed.'
-      );
-      return false;
-    }
+  /** Medication-specific gating — used both for final completion and to gate
+   *  moving from the medication phase to the monitoring phase. */
+  const getMedicationBlockingReason = (): string | null => {
     if (showMedicationRenew) {
       if (!medReportData?.renewConfirmed && medReportData?.gpMedicationDecision !== 'renew') {
-        alert('Confirm renewal of the current medication plan.');
-        return false;
+        return 'Confirm renewal of the current medication plan.';
       }
       if (currentMedications.length === 0) {
-        alert('No medications on file to renew — check the patient portfolio or refer for medication review.');
-        return false;
+        return 'No medications on file to renew — check the patient portfolio or refer for medication review.';
       }
     }
     if (showMedicationChange || showMedicationRenew) {
       if (!(medReportData?.clinicalReview || patientCase.clinicalReview)) {
-        alert(
-          'Record a clinical assessment from the medication feedback before continuing.'
-        );
-        return false;
+        return 'Record a clinical assessment from the medication feedback before continuing.';
       }
     }
     if (showMedicationChange) {
       const decision = medReportData?.treatmentPlanDecision;
       if (!decision) {
-        alert(
-          'Document side effects/adherence, then choose continue unchanged, adjust dose, or change medication.'
-        );
-        return false;
+        return 'Document side effects/adherence, then choose continue unchanged, adjust dose, or change medication.';
       }
       if (decision === 'change') {
         if (!medReportData?.motivationLetter?.trim()) {
-          alert('Document clinical motivation for the treatment plan update.');
-          return false;
+          return 'Document clinical motivation for the treatment plan update.';
         }
         if (!medReportData.newMedications || medReportData.newMedications.length === 0) {
-          alert('Select the updated medication for this specialist review.');
-          return false;
+          return 'Select the updated medication for this specialist review.';
         }
       }
       if (decision === 'adjust') {
         if (currentMedications.length === 0) {
-          alert('No medications on file to adjust — check Patient Records or change therapy.');
-          return false;
+          return 'No medications on file to adjust — check Patient Records or change therapy.';
         }
         if (!medReportData?.motivationLetter?.trim()) {
-          alert('Briefly document the clinical reason for the dose adjustment.');
-          return false;
+          return 'Briefly document the clinical reason for the dose adjustment.';
         }
         if (!medReportData.newMedications || medReportData.newMedications.length === 0) {
-          alert('Update strength, dosage, or instructions before continuing.');
-          return false;
+          return 'Update strength, dosage, or instructions before continuing.';
         }
       }
       if (decision === 'continue' && currentMedications.length === 0) {
-        alert(
-          'No medications on file to continue — check Patient Records or prescribe a new regimen.'
-        );
-        return false;
+        return 'No medications on file to continue — check Patient Records or prescribe a new regimen.';
       }
     }
     if (showMedicationEscalate) {
       if (!medicationRenewNotes.adherence.trim() && !medicationRenewNotes.sideEffects.trim()) {
-        alert(
-          'Document adherence and/or side effects on the medication report before referring for a medication change.'
-        );
-        return false;
+        return 'Document adherence and/or side effects on the medication report before referring for a medication change.';
       }
     }
+    return null;
+  };
+
+  const getReferralBlockingReason = (): string | null => {
     if (showReferral) {
       const gpMessage = referralData?.referralNote?.trim() ?? '';
       const specialistType =
         referralData?.specialistType?.trim() || defaultSpecialist;
       if (!specialistType.trim() || !gpMessage) {
-        alert('Type your referral message to the specialist before continuing.');
-        return false;
+        return 'Type your referral message to the specialist before continuing.';
       }
     }
-    return true;
+    return null;
   };
 
+  const getBlockingReason = (): string | null =>
+    getMedicationBlockingReason() ?? getReferralBlockingReason();
+
+  const canContinue = getBlockingReason() === null;
+
   const handleComplete = () => {
-    if (!validate()) return;
+    const reason = getBlockingReason();
+    if (reason) {
+      alert(reason);
+      return;
+    }
     onComplete(buildPayload());
   };
 
   const noopSave = () => {};
 
-  const treatmentPlanLabel = (() => {
-    if (!showMedicationChange) return null;
-    if (medReportData?.treatmentPlanDecision === 'continue') return 'Plan continued unchanged';
-    if (medReportData?.treatmentPlanDecision === 'adjust') return 'Dose / instructions adjusted';
-    if (medReportData?.treatmentPlanDecision === 'change') return 'Treatment plan updated';
-    return 'Review & update treatment plan';
-  })();
+  const needsMedicationReport =
+    showMedicationRenew || showMedicationChange || showMedicationEscalate;
 
-  const selectedLabels = [
-    showMedicationRenew && 'Medication report',
-    treatmentPlanLabel,
-    showMedicationEscalate && 'Refer for medication review',
-    showMonitoring && 'Order + document monitoring',
-    showReferral && !showMedicationEscalate && 'Escalate to neurologist',
-    continueOnly && 'Continue plan only',
-  ].filter(Boolean);
+  // Optimise limited specialist visits — let the doctor document Medication
+  // report and Monitoring tests in the same visit instead of booking a second
+  // one later. Only one job is shown at a time, like a distinct page, rather
+  // than stacking both forms in one long scroll.
+  const hasMedicationJob = needsMedicationReport;
+  const hasMonitoringJob = showMonitoring;
+  const hasBothJobs = hasMedicationJob && hasMonitoringJob;
+
+  const [phase, setPhase] = useState<'medication' | 'monitoring'>(
+    hasMedicationJob ? 'medication' : 'monitoring'
+  );
+
+  const medicationReady = getMedicationBlockingReason() === null;
+
+  const handleGoToMonitoring = () => {
+    if (!visitActions.monitoring) {
+      onVisitActionsChange?.({ monitoring: true });
+    }
+    setPhase('monitoring');
+  };
+
+  const handleAddMedication = () => {
+    onVisitActionsChange?.({ medication: true });
+    if (!specialistFlow) {
+      onMedicationModeChange?.('renew');
+    }
+    setPhase('medication');
+  };
 
   return (
     <div className="space-y-6">
-      <div className="card">
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">Complete visit actions</h2>
-        <p className="text-sm text-slate-500 mb-6">
-          Finish the documentation for actions you selected. Review the full visit summary next.
-        </p>
-
-        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 mb-6 text-sm space-y-1">
-          <p>
-            <span className="font-medium text-slate-700">Patient:</span>{' '}
-            {patientCase.patientName} — {patientCase.condition}
-          </p>
-          <p>
-            <span className="font-medium text-slate-700">Actions:</span> {selectedLabels.join(', ')}
-          </p>
-          {patientCase.clinicalReview && (
-            <p>
-              <span className="font-medium text-slate-700">Clinical assessment:</span>{' '}
-              <span className="capitalize">{patientCase.clinicalReview}</span>
-              {patientCase.clinicalReviewBasis?.trim() ? (
-                <span className="text-slate-600"> — {patientCase.clinicalReviewBasis.trim()}</span>
-              ) : null}
-            </p>
-          )}
-        </div>
-
-        {continueOnly && (
+      {continueOnly && (
+        <div className="card">
           <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
             <Activity className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
             <div>
@@ -338,100 +322,158 @@ const FollowUpDocumentation = ({
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {hasBothJobs && (
+        <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1 gap-1">
+          <button
+            type="button"
+            onClick={() => setPhase('medication')}
+            className={`text-sm font-medium px-4 py-1.5 rounded-lg transition-colors ${
+              phase === 'medication'
+                ? 'bg-white text-indigo-800 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Medication report
+          </button>
+          <button
+            type="button"
+            onClick={() => setPhase('monitoring')}
+            className={`text-sm font-medium px-4 py-1.5 rounded-lg transition-colors ${
+              phase === 'monitoring'
+                ? 'bg-white text-indigo-800 shadow-sm'
+                : 'text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            Ongoing management
+          </button>
+        </div>
+      )}
+
+      <div className={phase === 'medication' ? 'space-y-6' : 'hidden'}>
+        {showMedicationEscalate && (
+          <MedicationReportSummaryCard
+            patientName={patientCase.patientName}
+            condition={patientCase.condition}
+            clinicalReview={patientCase.clinicalReview}
+            clinicalReviewBasis={patientCase.clinicalReviewBasis}
+            medicationRenewNotes={medicationRenewNotes}
+            medications={currentMedications}
+            intent="refer_change"
+          />
+        )}
+
+        {(showMedicationRenew || showMedicationChange) && (
+          <div className="card">
+            <h3 className="text-sm font-bold uppercase tracking-wide text-violet-800 mb-4">
+              {showMedicationChange ? 'Review & update treatment plan' : 'Medication report'}
+            </h3>
+            <MedicationReport
+              embedMode
+              followUpMode
+              reportMode={showMedicationChange ? 'change' : 'renew'}
+              initialGpDecision={showMedicationRenew ? 'renew' : null}
+              initialClinicalReview={patientCase.clinicalReview ?? null}
+              initialClinicalReviewBasis={patientCase.clinicalReviewBasis ?? ''}
+              specialistFlow={specialistFlow || showMedicationChange}
+              currentMedications={currentMedications}
+              medicationNote={medicationNote}
+              condition={condition}
+              selectedPlan={selectedPlan}
+              benefitState={benefitState}
+              initialFollowUpNotes={initialFollowUpNotes}
+              initialRenewNotes={medicationRenewNotes}
+              onDataChange={(data) => {
+                setMedReportData(data);
+                if (data.sideEffects !== undefined || data.adherence !== undefined) {
+                  onMedicationRenewNotesChange({
+                    sideEffects: data.sideEffects ?? medicationRenewNotes.sideEffects,
+                    adherence: data.adherence ?? medicationRenewNotes.adherence,
+                  });
+                }
+                if (data.clinicalReview !== undefined || data.clinicalReviewBasis !== undefined) {
+                  onClinicalReviewChange?.(
+                    data.clinicalReview ?? patientCase.clinicalReview ?? null,
+                    data.clinicalReviewBasis ?? patientCase.clinicalReviewBasis
+                  );
+                }
+              }}
+              onSaveOnly={noopSave}
+              onSavePdfOnly={noopSave}
+              onSaveWithAttachments={noopSave}
+            />
+          </div>
+        )}
+
+        {hasMedicationJob && !showReferral && !continueOnly && (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleGoToMonitoring}
+              disabled={!medicationReady}
+              title={!medicationReady ? 'Finish the medication report first' : undefined}
+              className="text-sm font-medium px-4 py-2 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-indigo-50"
+            >
+              <Plus className="w-4 h-4" />
+              {hasMonitoringJob ? 'Continue to ongoing management' : 'Do ongoing management next'}
+            </button>
+          </div>
         )}
       </div>
 
-      {showMonitoring && (
-        <OngoingManagement
-          section="basket"
-          hideSaveActions
-          condition={condition}
-          patientId={patientId}
-          patientCases={patientCases}
-          currentCaseId={currentCaseId}
-          treatments={ongoingTreatments}
-          currentMedications={currentMedications}
-          clinicalNote={patientCase.clinicalNote}
-          assessmentNote={assessmentNote}
-          monitoringSkipped={monitoringSkipped}
-          onSetMonitoringSkipped={onSetMonitoringSkipped}
-          onAddTreatment={onAddTreatment}
-          onUpdateTreatment={onUpdateTreatment}
-          onRemoveTreatment={onRemoveTreatment}
-          onExportSingleTreatment={onExportSingleTreatment}
-          onSubmitClinicalAppeal={onSubmitClinicalAppeal}
-          onSaveOnly={noopSave}
-          onSavePdfOnly={noopSave}
-          onSaveWithAttachments={noopSave}
-          practitionerRole={practitionerRole}
-          investigationOrders={investigationOrders}
-          onOrderInvestigation={onOrderInvestigation}
-          onReferInvestigation={onReferInvestigation}
-          onMockReceiveResults={onMockReceiveResults}
-          onCancelInvestigation={onCancelInvestigation}
-          onRequestReferralFromBasket={onRequestReferralFromBasket}
-          onConfirmReferral={onConfirmReferral}
-          isReferring={isReferring}
-          clinicalReview={patientCase.clinicalReview ?? null}
-          clinicalReviewBasis={patientCase.clinicalReviewBasis ?? ''}
-          onClinicalReviewChange={onClinicalReviewChange}
-          specialistFlow={specialistFlow}
-        />
-      )}
-
-      {showMedicationEscalate && (
-        <MedicationReportSummaryCard
-          patientName={patientCase.patientName}
-          condition={patientCase.condition}
-          clinicalReview={patientCase.clinicalReview}
-          clinicalReviewBasis={patientCase.clinicalReviewBasis}
-          medicationRenewNotes={medicationRenewNotes}
-          medications={currentMedications}
-          intent="refer_change"
-        />
-      )}
-
-      {(showMedicationRenew || showMedicationChange) && (
-        <div className="card">
-          <h3 className="text-sm font-bold uppercase tracking-wide text-violet-800 mb-4">
-            {showMedicationChange ? 'Review & update treatment plan' : 'Medication report'}
-          </h3>
-          <MedicationReport
-            embedMode
-            followUpMode
-            reportMode={showMedicationChange ? 'change' : 'renew'}
-            initialGpDecision={showMedicationRenew ? 'renew' : null}
-            initialClinicalReview={patientCase.clinicalReview ?? null}
-            initialClinicalReviewBasis={patientCase.clinicalReviewBasis ?? ''}
-            specialistFlow={specialistFlow || showMedicationChange}
-            currentMedications={currentMedications}
-            medicationNote={medicationNote}
+      <div className={phase === 'monitoring' ? 'space-y-6' : 'hidden'}>
+        {showMonitoring && (
+          <OngoingManagement
+            section="basket"
+            hideSaveActions
             condition={condition}
-            selectedPlan={selectedPlan}
-            benefitState={benefitState}
-            initialFollowUpNotes={initialFollowUpNotes}
-            initialRenewNotes={medicationRenewNotes}
-            onDataChange={(data) => {
-              setMedReportData(data);
-              if (data.sideEffects !== undefined || data.adherence !== undefined) {
-                onMedicationRenewNotesChange({
-                  sideEffects: data.sideEffects ?? medicationRenewNotes.sideEffects,
-                  adherence: data.adherence ?? medicationRenewNotes.adherence,
-                });
-              }
-              if (data.clinicalReview !== undefined || data.clinicalReviewBasis !== undefined) {
-                onClinicalReviewChange?.(
-                  data.clinicalReview ?? patientCase.clinicalReview ?? null,
-                  data.clinicalReviewBasis ?? patientCase.clinicalReviewBasis
-                );
-              }
-            }}
+            patientId={patientId}
+            patientCases={patientCases}
+            currentCaseId={currentCaseId}
+            treatments={ongoingTreatments}
+            currentMedications={currentMedications}
+            clinicalNote={patientCase.clinicalNote}
+            assessmentNote={assessmentNote}
+            monitoringSkipped={monitoringSkipped}
+            onAddTreatment={onAddTreatment}
+            onUpdateTreatment={onUpdateTreatment}
+            onRemoveTreatment={onRemoveTreatment}
+            onExportSingleTreatment={onExportSingleTreatment}
+            onSubmitClinicalAppeal={onSubmitClinicalAppeal}
             onSaveOnly={noopSave}
             onSavePdfOnly={noopSave}
             onSaveWithAttachments={noopSave}
+            practitionerRole={practitionerRole}
+            investigationOrders={investigationOrders}
+            onOrderInvestigation={onOrderInvestigation}
+            onReferInvestigation={onReferInvestigation}
+            onMockReceiveResults={onMockReceiveResults}
+            onCancelInvestigation={onCancelInvestigation}
+            onRequestReferralFromBasket={onRequestReferralFromBasket}
+            onConfirmReferral={onConfirmReferral}
+            isReferring={isReferring}
+            clinicalReview={patientCase.clinicalReview ?? null}
+            clinicalReviewBasis={patientCase.clinicalReviewBasis ?? ''}
+            onClinicalReviewChange={onClinicalReviewChange}
+            specialistFlow={specialistFlow}
           />
-        </div>
-      )}
+        )}
+
+        {hasMonitoringJob && !hasMedicationJob && !showReferral && !continueOnly && (
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleAddMedication}
+              className="text-sm font-medium px-4 py-2 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100 flex items-center gap-1.5"
+            >
+              <Plus className="w-4 h-4" />
+              Add medication report next
+            </button>
+          </div>
+        )}
+      </div>
 
       {showReferral && (
         <div className="card">
@@ -462,19 +504,27 @@ const FollowUpDocumentation = ({
         </div>
       )}
 
-      <div className="flex flex-wrap gap-3 justify-between">
+      <div className="flex flex-wrap gap-3 justify-between items-center">
         <button type="button" onClick={onBack} className="btn-secondary flex items-center gap-2">
           <ArrowLeft className="w-4 h-4" />
           Back
         </button>
-        <button
-          type="button"
-          onClick={handleComplete}
-          className="btn-primary flex items-center gap-2"
-        >
-          <CheckCircle className="w-4 h-4" />
-          Continue to Visit Summary
-        </button>
+        {canContinue ? (
+          <button
+            type="button"
+            onClick={handleComplete}
+            className="btn-primary flex items-center gap-2"
+          >
+            <CheckCircle className="w-4 h-4" />
+            Continue to Visit Summary
+          </button>
+        ) : (
+          <p className="text-sm text-slate-500 text-right max-w-xs">
+            {needsMedicationReport
+              ? 'Complete the medication report to continue.'
+              : getBlockingReason()}
+          </p>
+        )}
       </div>
     </div>
   );

@@ -68,6 +68,28 @@ function isEegCode(code: string, description: string): boolean {
   return normalizeCode(code) === '2711' || lower.includes('eeg') || lower.includes('encephalogram');
 }
 
+/** Compact card title — e.g. EEG catalogue lines collapse to the procedure name. */
+export function getBasketDisplayTitle(description: string, code = ''): string {
+  const normalized = description.replace(/\s+/g, ' ').trim();
+  const normalizedCode = normalizeCode(code);
+  if (normalizedCode === '2712' || /interpretation and report/i.test(normalized)) {
+    return 'EEG interpretation';
+  }
+  if (isEegCode(code, normalized)) {
+    const match = normalized.match(/^(Electro-encephalogram\s*\(EEG\))/i);
+    return match?.[1] ?? 'Electro-encephalogram (EEG)';
+  }
+  return normalized;
+}
+
+/** Full catalogue wording shown in the expanded panel when it differs from the short title. */
+export function getBasketDetailDescription(description: string, code = ''): string | null {
+  const normalized = description.replace(/\s+/g, ' ').trim();
+  const title = getBasketDisplayTitle(normalized, code);
+  if (normalized === title) return null;
+  return normalized;
+}
+
 function isInterpretationItem(code: string, description: string, category: OngoingBasketCategory): boolean {
   if (category === 'interpretation_reports') return true;
   const lower = description.toLowerCase();

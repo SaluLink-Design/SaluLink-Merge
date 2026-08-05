@@ -11,6 +11,8 @@ import {
   hasClinicalAppealForTreatment,
 } from '@/lib/ongoingTreatmentUsage';
 import {
+  getBasketDetailDescription,
+  getBasketDisplayTitle,
   getRoleAwareBasketHintFromRules,
   loadOngoingBasketRules,
   type RoleAwareBasketHint,
@@ -116,7 +118,6 @@ interface OngoingManagementProps {
   section?: OngoingManagementSection;
   hideSaveActions?: boolean;
   monitoringSkipped?: boolean;
-  onSetMonitoringSkipped?: (skipped: boolean, reason?: string) => void;
   onAddTreatment: (treatment: TreatmentItem) => void;
   onUpdateTreatment: (index: number, treatment: Partial<TreatmentItem>) => void;
   onRemoveTreatment: (index: number) => void;
@@ -161,7 +162,6 @@ const OngoingManagement = ({
   section = 'all',
   hideSaveActions = false,
   monitoringSkipped = false,
-  onSetMonitoringSkipped,
   onAddTreatment,
   onUpdateTreatment,
   onRemoveTreatment,
@@ -405,9 +405,8 @@ const OngoingManagement = ({
       item.ongoingManagementBasket.code,
       item.ongoingManagementBasket.description
     );
-    setExpandedOrderKey(
-      `${item.ongoingManagementBasket.code}|${item.ongoingManagementBasket.description}`
-    );
+    // Collapse after confirm — card badge shows Awaiting; avoid dumping into the ordered panel.
+    setExpandedOrderKey(null);
   };
 
   const handleReferItem = (e: MouseEvent, item: TreatmentBasketItem) => {
@@ -714,8 +713,17 @@ const OngoingManagement = ({
             <div className="mb-2">
               <h2 className="text-xl font-bold text-slate-900">Investigations</h2>
               <p className="text-sm text-slate-600 mt-1">
-                Tap a test to select it, then order or refer from the expanded panel. Tap again to
-                collapse. You are not performing pathology or EEG assays on this screen.
+                {hideSaveActions ? (
+                  <>
+                    <span className="font-medium text-slate-700">Actions:</span> Order + document
+                    monitoring.
+                  </>
+                ) : (
+                  <>
+                    Tap a test to select it, then order or refer from the expanded panel. Tap again
+                    to collapse. You are not performing pathology or EEG assays on this screen.
+                  </>
+                )}
               </p>
             </div>
             {orderQueue.length > 0 && (
@@ -734,6 +742,10 @@ const OngoingManagement = ({
                     item.ongoingManagementBasket.code
                   );
                   const isExpanded = expandedOrderKey === basketKey;
+                  const detailDescription = getBasketDetailDescription(
+                    item.ongoingManagementBasket.description,
+                    item.ongoingManagementBasket.code
+                  );
                   const showOrderCta =
                     isExpanded &&
                     phase === 'order' &&
@@ -763,7 +775,10 @@ const OngoingManagement = ({
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 flex-wrap mb-1">
                               <h4 className="font-semibold text-slate-900 leading-snug">
-                                {item.ongoingManagementBasket.description}
+                                {getBasketDisplayTitle(
+                                  item.ongoingManagementBasket.description,
+                                  item.ongoingManagementBasket.code
+                                )}
                               </h4>
                               <span
                                 className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${
@@ -822,11 +837,27 @@ const OngoingManagement = ({
                             className="px-4 pb-4 border-t border-slate-100"
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <p className="pt-3 text-sm text-slate-600 leading-relaxed">
-                              {hint.clinicalHint}
-                            </p>
-                            <p className="mt-1 text-xs text-slate-500">
-                              Assign to: {hint.assigneeLabel || hint.assignedTo.join(', ')}
+                            {detailDescription && (
+                              <p className="pt-3 text-sm text-slate-700 leading-relaxed">
+                                {detailDescription}
+                              </p>
+                            )}
+                            <p
+                              className={`${
+                                detailDescription ? 'mt-2' : 'pt-3'
+                              } text-sm text-slate-600 leading-relaxed`}
+                            >
+                              {hint.primaryCta === 'order' &&
+                              (hint.assigneeLabel === 'Pathology Laboratory' ||
+                                hint.assignedTo.some((a) =>
+                                  a.toLowerCase().includes('patholog')
+                                ))
+                                ? 'This order will be sent to the pathology laboratory.'
+                                : hint.primaryCta === 'order'
+                                  ? `This order will be assigned to ${
+                                      hint.assigneeLabel || hint.assignedTo.join(', ')
+                                    }.`
+                                  : hint.clinicalHint}
                             </p>
                             {(showOrderCta || showReferCta) && (
                               <div className="flex flex-wrap gap-2 pt-3">
@@ -836,7 +867,7 @@ const OngoingManagement = ({
                                     onClick={(e) => handleOrderItem(e, item)}
                                     className="text-sm font-semibold px-4 py-2 rounded-xl authi-gradient text-white hover:opacity-90"
                                   >
-                                    {hint.coordinationLabel}
+                                    Confirm
                                   </button>
                                 )}
                                 {showReferCta && (
@@ -848,13 +879,6 @@ const OngoingManagement = ({
                                     {hint.coordinationLabel}
                                   </button>
                                 )}
-                                <button
-                                  type="button"
-                                  onClick={() => setExpandedOrderKey(null)}
-                                  className="text-sm font-medium px-4 py-2 rounded-xl border border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
-                                >
-                                  Unselect
-                                </button>
                               </div>
                             )}
                           </div>
@@ -992,7 +1016,10 @@ const OngoingManagement = ({
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap mb-1">
                               <h4 className="font-semibold text-slate-900 leading-snug">
-                                {item.ongoingManagementBasket.description}
+                                {getBasketDisplayTitle(
+                                  item.ongoingManagementBasket.description,
+                                  item.ongoingManagementBasket.code
+                                )}
                               </h4>
                               {isSelected && (
                                 <span className="brand-badge-selected inline-flex items-center gap-1">
@@ -1294,31 +1321,6 @@ const OngoingManagement = ({
                   specialistFlow={specialistFlow}
                   hint="Based on these monitoring results — not a separate assessment step."
                 />
-              </div>
-            )}
-
-            {hideSaveActions && onSetMonitoringSkipped && treatments.length === 0 && (
-              <div className="order-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4">
-                <p className="text-sm text-slate-600 mb-3">
-                  No monitoring tests documented this visit? You can skip the basket and continue —
-                  use Escalate to neurologist on visit actions if a specialist referral is needed.
-                </p>
-                <button
-                  type="button"
-                  onClick={() =>
-                    onSetMonitoringSkipped(
-                      !monitoringSkipped,
-                      monitoringSkipped ? undefined : 'No monitoring tests this visit'
-                    )
-                  }
-                  className={`text-sm font-medium px-4 py-2 rounded-xl border transition ${
-                    monitoringSkipped
-                      ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
-                      : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  {monitoringSkipped ? 'Monitoring skipped for this visit' : 'No monitoring this visit'}
-                </button>
               </div>
             )}
 

@@ -33,7 +33,6 @@ import ChronicRegistrationNote from '@/components/ChronicRegistrationNote';
 import FollowUpDocumentation, { FollowUpCompletionPayload } from '@/components/FollowUpDocumentation';
 import FollowUpClaimSummary from '@/components/FollowUpClaimSummary';
 import FollowUpVisitActions from '@/components/FollowUpVisitActions';
-import FollowUpBasketUtilisation from '@/components/FollowUpBasketUtilisation';
 import MedicationReport, {
   MedicationReportFormData,
   type GpMedicationDecision,
@@ -3905,7 +3904,7 @@ export default function Home() {
 
               {store.currentStep > 0 &&
                 store.currentStep < (stayOnRegistrationShell ? workspaceStep : finStep) && (
-                <div className="flex justify-between">
+                <div className="flex justify-between mt-10">
                   <button
                     onClick={handlePreviousStep}
                     className="btn-secondary flex items-center gap-2"
@@ -4083,22 +4082,13 @@ export default function Home() {
 
               <div className="space-y-6">
                 {store.currentStep === 0 && (
-                  <>
-                    <FollowUpBasketUtilisation
-                      condition={followUpCondition}
-                      patientId={followUpPatientId}
-                      patientCases={followUpPatientCases}
-                      currentCaseId={store.currentCaseId}
-                      ongoingTreatments={store.ongoingTreatments}
-                    />
-                    <ClinicalNoteInput
-                      variant="follow-up"
-                      value={store.clinicalNote}
-                      onChange={store.setClinicalNote}
-                      onAnalyze={() => {}}
-                      isAnalyzing={false}
-                    />
-                  </>
+                  <ClinicalNoteInput
+                    variant="follow-up"
+                    value={store.clinicalNote}
+                    onChange={store.setClinicalNote}
+                    onAnalyze={() => {}}
+                    isAnalyzing={false}
+                  />
                 )}
 
                 {store.currentStep === 1 && (
@@ -4156,6 +4146,8 @@ export default function Home() {
                       store.setClinicalReview(status);
                       if (basis !== undefined) store.setClinicalReviewBasis(basis);
                     }}
+                    onVisitActionsChange={store.setFollowUpVisitActions}
+                    onMedicationModeChange={store.setMedicationMode}
                     progressReview={store.progressReview}
                     ongoingTreatments={store.ongoingTreatments}
                     currentMedications={store.medications}
@@ -4171,9 +4163,6 @@ export default function Home() {
                     monitoringSkipped={store.monitoringSkipped}
                     specialistFlow={specialistFlow}
                     specialistVisitUsage={specialistVisitUsage}
-                    onSetMonitoringSkipped={(skipped, reason) =>
-                      store.setMonitoringSkipped(skipped, reason)
-                    }
                     onAddTreatment={store.addOngoingTreatment}
                     onUpdateTreatment={store.updateOngoingTreatment}
                     onRemoveTreatment={(index) => {
@@ -4272,6 +4261,16 @@ export default function Home() {
                     medications={store.medications}
                     previousMedications={store.medications}
                     newMedications={pendingFollowUpPayload?.medicationReport?.newMedications ?? []}
+                    medicationFeedback={
+                      pendingFollowUpPayload?.medicationReport
+                        ? {
+                            sideEffects: pendingFollowUpPayload.medicationReport.sideEffects,
+                            adherence: pendingFollowUpPayload.medicationReport.adherence,
+                            motivationLetter:
+                              pendingFollowUpPayload.medicationReport.motivationLetter,
+                          }
+                        : null
+                    }
                     benefitState={store.activeBenefitState}
                     onBack={handlePreviousStep}
                     onConfirm={handleFollowUpSummaryConfirm}

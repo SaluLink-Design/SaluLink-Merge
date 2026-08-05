@@ -333,18 +333,17 @@ export const useStore = create<AppState>()(
             next.medication = false;
             next.monitoring = false;
             next.referral = false;
-          } else if (actions.medication === true) {
-            next.continueOnly = false;
-            next.monitoring = false;
-            next.referral = false;
-          } else if (actions.monitoring === true) {
-            next.continueOnly = false;
-            next.medication = false;
-            next.referral = false;
           } else if (actions.referral === true) {
+            // Escalation stays exclusive — GP/specialist do not run a referral
+            // alongside meds/monitoring (the medication+escalate_change pairing
+            // below is a separate, deliberate exception).
             next.continueOnly = false;
             next.medication = false;
             next.monitoring = false;
+          } else if (actions.medication === true || actions.monitoring === true) {
+            // Medication and Monitoring can both be documented in the same visit.
+            next.continueOnly = false;
+            next.referral = false;
           }
           const patch: Partial<AppState> = { followUpVisitActions: next };
           if (actions.medication === false) {

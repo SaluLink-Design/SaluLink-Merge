@@ -23,17 +23,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   {
     label: 'Dashboard',
-    activeViews: ['dashboard', 'landing'],
-    targetView: 'dashboard',
-  },
-  {
-    label: 'Clinical Notes',
-    activeViews: ['workflow', 'case-options'],
-    targetView: 'dashboard',
-  },
-  {
-    label: 'Patients',
-    activeViews: ['patient-profile', 'assistant-home', 'patient-info'],
+    activeViews: ['dashboard'],
     targetView: 'dashboard',
   },
   {
@@ -116,8 +106,6 @@ const AppSidebar = ({
       <nav className="flex-1 px-3 space-y-0.5">
         {navItems.map((item) => {
           const isActive = item.activeViews.includes(currentView);
-          const showNewCaseSubItem =
-            item.label === 'Patients' && currentView === 'patient-info';
 
           return (
             <div key={item.label}>
@@ -139,15 +127,6 @@ const AppSidebar = ({
               >
                 {item.label}
               </button>
-
-              {showNewCaseSubItem && (
-                <div className="ml-4 mt-0.5 flex items-center gap-2 px-4 py-2">
-                  <span className="text-slate-600 text-xs select-none">└</span>
-                  <span className="text-xs font-medium brand-link-gradient-text">
-                    Creating new case
-                  </span>
-                </div>
-              )}
             </div>
           );
         })}

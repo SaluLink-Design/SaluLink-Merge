@@ -22,6 +22,7 @@ import { format } from 'date-fns';
 import { useStore } from '@/lib/store';
 import { DataService } from '@/lib/dataService';
 import { getSpecialistVisitUsageSummary } from '@/lib/specialistVisitUsage';
+import SchemeBasketUtilisation from '@/components/SchemeBasketUtilisation';
 
 interface PatientProfileProps {
   profileId: string;
@@ -192,10 +193,22 @@ const PatientProfile = ({
   const claimsForCondition = (condition: string) =>
     sortedCases.filter((c) => c.condition === condition);
 
+  const patientCasesForBasket = useMemo(
+    () =>
+      medicalPatientId
+        ? allStoreCases.filter(
+            (c) =>
+              c.patientId.trim().toLowerCase() === medicalPatientId.trim().toLowerCase()
+          )
+        : [],
+    [allStoreCases, medicalPatientId]
+  );
+
   const renderPatientDetails = () => {
     if (!patient) return null;
     return (
-      <div className="border-t border-slate-100 pt-5 mt-5">
+      <div className="mt-5">
+        <p className="text-xs uppercase tracking-widest text-slate-400 mb-3">Patient information</p>
         <div className="flex items-center gap-4 mb-5">
           <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
             <User className="w-7 h-7 text-blue-400" />
@@ -229,57 +242,52 @@ const PatientProfile = ({
   const renderClaimsList = (conditionClaims: PatientCase[]) => {
     if (conditionClaims.length === 0) {
       return (
-        <div className="border-t border-slate-100 pt-5 mt-5">
-          <p className="text-sm text-slate-400 text-center py-4">No claims yet for this condition.</p>
-        </div>
+        <p className="text-sm text-slate-400 text-center py-6">No claims yet for this condition.</p>
       );
     }
 
     return (
-      <div className="border-t border-slate-100 pt-5 mt-5">
-        <h3 className="font-semibold text-slate-900 mb-3">Claims ({conditionClaims.length})</h3>
-        <div className="divide-y divide-slate-100 rounded-xl border border-slate-100 overflow-hidden">
-          {conditionClaims.map((claim) => {
-            const ct = claim.claimType
-              ? claimTypeBadge[claim.claimType]
-              : { label: 'Intake', className: 'bg-slate-100 text-slate-500 border border-slate-200' };
-            const st = statusBadge[claim.status] ?? {
-              label: claim.status,
-              className: 'bg-slate-100 text-slate-500',
-            };
-            return (
-              <div
-                key={claim.id}
-                className="px-4 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors bg-white"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${ct.className}`}>
-                      {ct.label}
-                    </span>
-                    <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${st.className}`}>
-                      {st.label}
-                    </span>
-                  </div>
-                  <p className="text-sm font-medium text-slate-900 truncate">
-                    {claim.condition || 'No condition recorded'}
-                    {claim.icdCode ? ` — ${claim.icdCode}` : ''}
-                  </p>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    {format(new Date(claim.createdAt), 'dd MMM yyyy')}
-                  </p>
+      <div className="divide-y divide-slate-100 rounded-xl border border-slate-100 overflow-hidden">
+        {conditionClaims.map((claim) => {
+          const ct = claim.claimType
+            ? claimTypeBadge[claim.claimType]
+            : { label: 'Intake', className: 'bg-slate-100 text-slate-500 border border-slate-200' };
+          const st = statusBadge[claim.status] ?? {
+            label: claim.status,
+            className: 'bg-slate-100 text-slate-500',
+          };
+          return (
+            <div
+              key={claim.id}
+              className="px-4 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors bg-white"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${ct.className}`}>
+                    {ct.label}
+                  </span>
+                  <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-medium ${st.className}`}>
+                    {st.label}
+                  </span>
                 </div>
-                <button
-                  onClick={() => onViewClaim(claim.id)}
-                  className="ml-4 flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
-                >
-                  <Eye className="w-4 h-4 shrink-0" />
-                  View Claim
-                </button>
+                <p className="text-sm font-medium text-slate-900 truncate">
+                  {claim.condition || 'No condition recorded'}
+                  {claim.icdCode ? ` — ${claim.icdCode}` : ''}
+                </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {format(new Date(claim.createdAt), 'dd MMM yyyy')}
+                </p>
               </div>
-            );
-          })}
-        </div>
+              <button
+                onClick={() => onViewClaim(claim.id)}
+                className="ml-4 flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-blue-600 rounded-lg hover:bg-blue-50 transition-colors"
+              >
+                <Eye className="w-4 h-4 shrink-0" />
+                View Claim
+              </button>
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -415,96 +423,128 @@ const PatientProfile = ({
                 : null;
 
             return (
-              <div key={condition} className={`${portfolioCardClass} p-6`}>
-                {/* Chronic case header */}
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl authi-gradient flex items-center justify-center shrink-0">
-                    <HeartPulse className="w-5 h-5 text-white" />
+              <div key={condition} className="space-y-6">
+                {/* Patient portfolio — condition, registration, demographics, coverage */}
+                <div className={`${portfolioCardClass} p-6`}>
+                  <p className="text-xs uppercase tracking-widest text-slate-400 mb-4">
+                    Patient portfolio
+                  </p>
+
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl authi-gradient flex items-center justify-center shrink-0">
+                      <HeartPulse className="w-5 h-5 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs uppercase tracking-widest text-slate-400">Chronic Case</p>
+                      <h2 className="text-xl font-semibold text-slate-900">{condition}</h2>
+                      {icdCode && (
+                        <p className="text-sm font-mono text-indigo-600 mt-0.5">{icdCode}</p>
+                      )}
+                    </div>
+                    <span
+                      className={`text-xs px-2.5 py-1 rounded-full font-medium border shrink-0 ${
+                        regStatus === 'submitted' || cibApproved || pathwayUnlocked
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          : regStatus === 'in_progress'
+                            ? 'bg-blue-50 text-blue-800 border-blue-200'
+                            : 'bg-slate-100 text-slate-600 border-slate-200'
+                      }`}
+                    >
+                      {cibApproved || pathwayUnlocked
+                        ? 'Benefit active'
+                        : registrationStatusLabel[regStatus] ?? regStatus}
+                    </span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs uppercase tracking-widest text-slate-400">Chronic Case</p>
-                    <h2 className="text-xl font-semibold text-slate-900">{condition}</h2>
-                    {icdCode && (
-                      <p className="text-sm font-mono text-indigo-600 mt-0.5">{icdCode}</p>
+
+                  {needsRegistration && onContinueRegistration && (
+                    <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                      <p className="text-sm text-amber-900">
+                        Chronic registration in progress for <strong>{condition}</strong>
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => onContinueRegistration(profileId, condition)}
+                        className="text-sm font-semibold text-amber-900 underline hover:text-amber-700"
+                      >
+                        Continue registration
+                      </button>
+                    </div>
+                  )}
+
+                  {pathwayUnlocked && !needsRegistration && (
+                    <div className="mt-4 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                      <p className="text-sm text-emerald-800">
+                        CIB registration complete — care pathway unlocked. Use{' '}
+                        <strong>+ New Case Action</strong> to start{' '}
+                        {isSpecialist
+                          ? 'an Annual / Specialist Review'
+                          : 'follow-up visits or care pathway activities'}
+                        .
+                      </p>
+                    </div>
+                  )}
+
+                  {renderPatientDetails()}
+
+                  <div className="mt-5 space-y-3">
+                    <p className="text-xs uppercase tracking-widest text-slate-400">
+                      Scheme coverage
+                    </p>
+
+                    {isSpecialist && specialistVisitUsage?.maxCovered != null && (
+                      <div
+                        className={`flex items-start gap-3 rounded-xl border px-4 py-3 ${
+                          specialistVisitUsage.isExhausted
+                            ? 'border-amber-200 bg-amber-50'
+                            : 'border-slate-200 bg-slate-50'
+                        }`}
+                      >
+                        <HeartPulse
+                          className={`w-4 h-4 shrink-0 mt-0.5 ${
+                            specialistVisitUsage.isExhausted ? 'text-amber-600' : 'text-slate-400'
+                          }`}
+                        />
+                        <p
+                          className={`text-sm ${
+                            specialistVisitUsage.isExhausted ? 'text-amber-900' : 'text-slate-600'
+                          }`}
+                        >
+                          {specialistVisitUsage.usedHistorical} of{' '}
+                          {specialistVisitUsage.maxCovered} specialist visits used this year
+                          {specialistVisitUsage.isExhausted
+                            ? ' — starting a review may be over the covered limit.'
+                            : '.'}{' '}
+                          <span className="text-slate-400">(Visits tracked in SaluLink)</span>
+                        </p>
+                      </div>
+                    )}
+
+                    {medicalPatientId && (
+                      <SchemeBasketUtilisation
+                        condition={condition}
+                        patientId={medicalPatientId}
+                        patientCases={patientCasesForBasket}
+                      />
                     )}
                   </div>
-                  <span
-                    className={`text-xs px-2.5 py-1 rounded-full font-medium border shrink-0 ${
-                      regStatus === 'submitted' || cibApproved || pathwayUnlocked
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                        : regStatus === 'in_progress'
-                          ? 'bg-blue-50 text-blue-800 border-blue-200'
-                          : 'bg-slate-100 text-slate-600 border-slate-200'
-                    }`}
-                  >
-                    {cibApproved || pathwayUnlocked
-                      ? 'Benefit active'
-                      : registrationStatusLabel[regStatus] ?? regStatus}
-                  </span>
                 </div>
 
-                {/* Registration in progress — only when not yet complete */}
-                {needsRegistration && onContinueRegistration && (
-                  <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                    <p className="text-sm text-amber-900">
-                      Chronic registration in progress for <strong>{condition}</strong>
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => onContinueRegistration(profileId, condition)}
-                      className="text-sm font-semibold text-amber-900 underline hover:text-amber-700"
-                    >
-                      Continue registration
-                    </button>
+                {/* Patient activity — claims for this condition */}
+                <div className={`${portfolioCardClass} p-6`}>
+                  <div className="flex items-center gap-2 mb-4">
+                    <Activity className="w-4 h-4 text-slate-400" />
+                    <div>
+                      <p className="text-xs uppercase tracking-widest text-slate-400">
+                        Patient activity
+                      </p>
+                      <h3 className="font-semibold text-slate-900">
+                        Claims ({conditionClaims.length})
+                      </h3>
+                    </div>
                   </div>
-                )}
-
-                {/* FYI when registration is complete */}
-                {pathwayUnlocked && !needsRegistration && (
-                  <div className="mt-4 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                    <p className="text-sm text-emerald-800">
-                      CIB registration complete — care pathway unlocked. Use{' '}
-                      <strong>+ New Case Action</strong> to start{' '}
-                      {isSpecialist
-                        ? 'an Annual / Specialist Review'
-                        : 'follow-up visits or care pathway activities'}
-                      .
-                    </p>
-                  </div>
-                )}
-
-                {/* Specialist-only: annual visit benefit, informational — never blocks starting a review */}
-                {isSpecialist && specialistVisitUsage?.maxCovered != null && (
-                  <div
-                    className={`mt-3 flex items-start gap-3 rounded-xl border px-4 py-3 ${
-                      specialistVisitUsage.isExhausted
-                        ? 'border-amber-200 bg-amber-50'
-                        : 'border-slate-200 bg-slate-50'
-                    }`}
-                  >
-                    <HeartPulse
-                      className={`w-4 h-4 shrink-0 mt-0.5 ${
-                        specialistVisitUsage.isExhausted ? 'text-amber-600' : 'text-slate-400'
-                      }`}
-                    />
-                    <p className={`text-sm ${specialistVisitUsage.isExhausted ? 'text-amber-900' : 'text-slate-600'}`}>
-                      {specialistVisitUsage.usedHistorical} of {specialistVisitUsage.maxCovered} specialist
-                      visits used this year
-                      {specialistVisitUsage.isExhausted
-                        ? ' — starting a review may be over the covered limit.'
-                        : '.'}
-                      {' '}
-                      <span className="text-slate-400">(Visits tracked in SaluLink)</span>
-                    </p>
-                  </div>
-                )}
-
-                {/* Patient profile — merged into the chronic case card */}
-                {renderPatientDetails()}
-
-                {/* Claims for this condition */}
-                {renderClaimsList(conditionClaims)}
+                  {renderClaimsList(conditionClaims)}
+                </div>
               </div>
             );
           })
@@ -512,6 +552,9 @@ const PatientProfile = ({
           <>
             {patient && (
               <div className={`${portfolioCardClass} p-6`}>
+                <p className="text-xs uppercase tracking-widest text-slate-400 mb-4">
+                  Patient portfolio
+                </p>
                 <div className="flex items-center gap-4 mb-5">
                   <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
                     <User className="w-7 h-7 text-blue-400" />
@@ -541,12 +584,16 @@ const PatientProfile = ({
               </div>
             )}
 
-            <div className={`${portfolioCardClass} overflow-hidden`}>
-              <div className="px-6 py-4 border-b border-slate-200">
-                <h3 className="font-semibold text-slate-900">Claims ({sortedCases.length})</h3>
+            <div className={`${portfolioCardClass} p-6`}>
+              <div className="flex items-center gap-2 mb-4">
+                <Activity className="w-4 h-4 text-slate-400" />
+                <div>
+                  <p className="text-xs uppercase tracking-widest text-slate-400">Patient activity</p>
+                  <h3 className="font-semibold text-slate-900">Claims ({sortedCases.length})</h3>
+                </div>
               </div>
               {sortedCases.length > 0 ? (
-                <div className="divide-y divide-slate-100">
+                <div className="divide-y divide-slate-100 rounded-xl border border-slate-100 overflow-hidden">
                   {sortedCases.map((claim) => {
                     const ct = claim.claimType
                       ? claimTypeBadge[claim.claimType]
@@ -558,7 +605,7 @@ const PatientProfile = ({
                     return (
                       <div
                         key={claim.id}
-                        className="px-6 py-4 flex items-center justify-between hover:bg-slate-50 transition-colors"
+                        className="px-4 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors bg-white"
                       >
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1.5">
@@ -589,9 +636,7 @@ const PatientProfile = ({
                   })}
                 </div>
               ) : (
-                <div className="py-12 text-center">
-                  <p className="text-slate-400">No claims yet for this patient.</p>
-                </div>
+                <p className="text-sm text-slate-400 text-center py-6">No claims yet for this patient.</p>
               )}
             </div>
           </>

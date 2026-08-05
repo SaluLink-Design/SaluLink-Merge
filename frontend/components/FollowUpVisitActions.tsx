@@ -94,20 +94,26 @@ const FollowUpVisitActions = ({
 }: FollowUpVisitActionsProps) => {
   const toggleWork = (key: 'medication' | 'monitoring' | 'referral') => {
     const turningOff = value[key];
-    // One visit job at a time — medication, monitoring, and escalate are exclusive.
-    onChange({
-      medication: key === 'medication' && !turningOff,
-      monitoring: key === 'monitoring' && !turningOff,
-      referral: key === 'referral' && !turningOff,
-      continueOnly: false,
-    });
-    if (key === 'medication' && !turningOff) {
-      onMedicationModeChange('renew');
+    if (key === 'referral') {
+      // Escalation stays exclusive — GP does not run a referral alongside meds/monitoring.
+      onChange({
+        medication: false,
+        monitoring: false,
+        referral: !turningOff,
+        continueOnly: false,
+      });
+      onMedicationModeChange(null);
       onGpMedicationDecision?.(null);
       return;
     }
-    onMedicationModeChange(null);
-    onGpMedicationDecision?.(null);
+    if (key === 'medication') {
+      // Medication and Monitoring can both be documented in the same visit.
+      onChange({ medication: !turningOff, continueOnly: false });
+      onMedicationModeChange(turningOff ? null : 'renew');
+      onGpMedicationDecision?.(null);
+      return;
+    }
+    onChange({ monitoring: !turningOff, continueOnly: false });
   };
 
   const handleGpDecision = (decision: GpMedicationDecision | null) => {
@@ -159,8 +165,8 @@ const FollowUpVisitActions = ({
         <h2 className="text-2xl font-bold text-slate-900">What does this visit need?</h2>
         <p className="text-sm text-slate-500 mt-1">
           {specialistFlow
-            ? 'Choose one action for this specialist review visit.'
-            : 'Choose one action for this visit. Renew the approved plan from the medication report, order monitoring, or escalate when needed.'}
+            ? 'Select the actions needed for this specialist review visit — medication and monitoring can be documented together.'
+            : 'Renew the medication report and/or order monitoring in the same visit, or escalate when needed.'}
         </p>
         {clinicalReviewDeteriorating && !specialistFlow && (
           <p className="text-xs text-amber-700 mt-2 font-medium">

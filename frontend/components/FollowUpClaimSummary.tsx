@@ -27,6 +27,12 @@ import { getSharedCareSummaryLabels } from '@/lib/sharedCare';
 import FundingSourceBadge from '@/components/FundingSourceBadge';
 import type { MedicationMode } from '@/types';
 
+interface MedicationFeedbackSummary {
+  sideEffects?: string;
+  adherence?: string;
+  motivationLetter?: string;
+}
+
 interface FollowUpClaimSummaryProps {
   patientCase: PatientCase;
   progressReview: ProgressReview;
@@ -39,6 +45,8 @@ interface FollowUpClaimSummaryProps {
   medications: SelectedMedication[];
   previousMedications?: SelectedMedication[];
   newMedications?: SelectedMedication[];
+  /** Adherence / side-effects / motivation text captured on the medication report this visit */
+  medicationFeedback?: MedicationFeedbackSummary | null;
   benefitState?: BenefitState | null;
   onConfirm: () => void;
   onBack: () => void;
@@ -104,11 +112,17 @@ const FollowUpClaimSummary = ({
   medications,
   previousMedications = [],
   newMedications = [],
+  medicationFeedback,
   benefitState,
   onConfirm,
   onBack,
 }: FollowUpClaimSummaryProps) => {
   const progressSummary = formatProgressReviewSummary(progressReview);
+  const hasMedicationFeedback = Boolean(
+    medicationFeedback?.sideEffects?.trim() ||
+      medicationFeedback?.adherence?.trim() ||
+      medicationFeedback?.motivationLetter?.trim()
+  );
   const actionLabels = visitActionLabels(visitActions, medicationMode, treatmentDecision);
   const hasMedicationChange =
     newMedications.length > 0 &&
@@ -232,6 +246,47 @@ const FollowUpClaimSummary = ({
               <p className="text-sm text-slate-500">No monitoring items recorded</p>
             )}
           </div>
+
+          {hasMedicationFeedback && (
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Pill className="w-5 h-5 text-slate-400" />
+                <h3 className="font-semibold text-slate-900">Medication feedback</h3>
+              </div>
+              <div className="space-y-3">
+                {medicationFeedback?.adherence?.trim() && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                      Adherence
+                    </p>
+                    <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                      {medicationFeedback.adherence.trim()}
+                    </p>
+                  </div>
+                )}
+                {medicationFeedback?.sideEffects?.trim() && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                      Side effects / tolerability
+                    </p>
+                    <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                      {medicationFeedback.sideEffects.trim()}
+                    </p>
+                  </div>
+                )}
+                {medicationFeedback?.motivationLetter?.trim() && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-1">
+                      Clinical motivation
+                    </p>
+                    <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                      {medicationFeedback.motivationLetter.trim()}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {clinicalReview && (
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-5">
