@@ -340,10 +340,15 @@ export const useStore = create<AppState>()(
             next.continueOnly = false;
             next.medication = false;
             next.monitoring = false;
-          } else if (actions.medication === true || actions.monitoring === true) {
-            // Medication and Monitoring can both be documented in the same visit.
+          } else if (actions.medication === true) {
             next.continueOnly = false;
             next.referral = false;
+            // Card toggle clears monitoring explicitly when switching focus.
+            // Do not clear monitoring here — mid-flow may keep both.
+          } else if (actions.monitoring === true) {
+            next.continueOnly = false;
+            next.referral = false;
+            // Keep medication if already on (med report → ongoing management).
           }
           const patch: Partial<AppState> = { followUpVisitActions: next };
           if (actions.medication === false) {

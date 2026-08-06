@@ -4147,7 +4147,6 @@ export default function Home() {
                       if (basis !== undefined) store.setClinicalReviewBasis(basis);
                     }}
                     onVisitActionsChange={store.setFollowUpVisitActions}
-                    onMedicationModeChange={store.setMedicationMode}
                     progressReview={store.progressReview}
                     ongoingTreatments={store.ongoingTreatments}
                     currentMedications={store.medications}

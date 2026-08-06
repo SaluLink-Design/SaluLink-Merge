@@ -48,10 +48,8 @@ interface FollowUpDocumentationProps {
     status: ClinicalReviewStatus | null,
     basis?: string
   ) => void;
-  /** Lets the doctor add Medication report and/or Monitoring tests to this same visit,
-   *  instead of spending a second (limited) specialist visit later. */
+  /** Lets the doctor continue from a medication report into monitoring in the same visit. */
   onVisitActionsChange?: (updates: Partial<FollowUpVisitActions>) => void;
-  onMedicationModeChange?: (mode: MedicationMode | null) => void;
   progressReview: ProgressReview;
   ongoingTreatments: TreatmentItem[];
   currentMedications: SelectedMedication[];
@@ -94,7 +92,6 @@ const FollowUpDocumentation = ({
   onMedicationRenewNotesChange,
   onClinicalReviewChange,
   onVisitActionsChange,
-  onMedicationModeChange,
   progressReview,
   ongoingTreatments,
   currentMedications,
@@ -280,10 +277,6 @@ const FollowUpDocumentation = ({
   const needsMedicationReport =
     showMedicationRenew || showMedicationChange || showMedicationEscalate;
 
-  // Optimise limited specialist visits — let the doctor document Medication
-  // report and Monitoring tests in the same visit instead of booking a second
-  // one later. Only one job is shown at a time, like a distinct page, rather
-  // than stacking both forms in one long scroll.
   const hasMedicationJob = needsMedicationReport;
   const hasMonitoringJob = showMonitoring;
   const hasBothJobs = hasMedicationJob && hasMonitoringJob;
@@ -299,14 +292,6 @@ const FollowUpDocumentation = ({
       onVisitActionsChange?.({ monitoring: true });
     }
     setPhase('monitoring');
-  };
-
-  const handleAddMedication = () => {
-    onVisitActionsChange?.({ medication: true });
-    if (!specialistFlow) {
-      onMedicationModeChange?.('renew');
-    }
-    setPhase('medication');
   };
 
   return (
@@ -459,19 +444,6 @@ const FollowUpDocumentation = ({
             onClinicalReviewChange={onClinicalReviewChange}
             specialistFlow={specialistFlow}
           />
-        )}
-
-        {hasMonitoringJob && !hasMedicationJob && !showReferral && !continueOnly && (
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={handleAddMedication}
-              className="text-sm font-medium px-4 py-2 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100 flex items-center gap-1.5"
-            >
-              <Plus className="w-4 h-4" />
-              Add medication report next
-            </button>
-          </div>
         )}
       </div>
 

@@ -94,8 +94,8 @@ const FollowUpVisitActions = ({
 }: FollowUpVisitActionsProps) => {
   const toggleWork = (key: 'medication' | 'monitoring' | 'referral') => {
     const turningOff = value[key];
+    // One visit job at a time — selecting another clears the rest.
     if (key === 'referral') {
-      // Escalation stays exclusive — GP does not run a referral alongside meds/monitoring.
       onChange({
         medication: false,
         monitoring: false,
@@ -107,13 +107,24 @@ const FollowUpVisitActions = ({
       return;
     }
     if (key === 'medication') {
-      // Medication and Monitoring can both be documented in the same visit.
-      onChange({ medication: !turningOff, continueOnly: false });
+      onChange({
+        medication: !turningOff,
+        monitoring: false,
+        referral: false,
+        continueOnly: false,
+      });
       onMedicationModeChange(turningOff ? null : 'renew');
       onGpMedicationDecision?.(null);
       return;
     }
-    onChange({ monitoring: !turningOff, continueOnly: false });
+    onChange({
+      monitoring: !turningOff,
+      medication: false,
+      referral: false,
+      continueOnly: false,
+    });
+    onMedicationModeChange(null);
+    onGpMedicationDecision?.(null);
   };
 
   const handleGpDecision = (decision: GpMedicationDecision | null) => {
@@ -165,8 +176,8 @@ const FollowUpVisitActions = ({
         <h2 className="text-2xl font-bold text-slate-900">What does this visit need?</h2>
         <p className="text-sm text-slate-500 mt-1">
           {specialistFlow
-            ? 'Select the actions needed for this specialist review visit — medication and monitoring can be documented together.'
-            : 'Renew the medication report and/or order monitoring in the same visit, or escalate when needed.'}
+            ? 'Choose one focus for this specialist review visit.'
+            : 'Choose one focus for this visit — medication report, monitoring, or escalate.'}
         </p>
         {clinicalReviewDeteriorating && !specialistFlow && (
           <p className="text-xs text-amber-700 mt-2 font-medium">
